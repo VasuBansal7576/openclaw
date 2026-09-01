@@ -26,6 +26,7 @@ import {
   projectCliBackendEvent,
   projectCliTaggedReasoning,
 } from "./cli-output-events.js";
+import * as cliOutputLifecycle from "./cli-output-lifecycle.js";
 import {
   decodeCliRecords,
   isClaudeStreamJsonDialect,
@@ -276,6 +277,25 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
 
   const handleCustomJsonlLine = (line: string, rawLine: string): boolean => {
     if (parseErrorText) {
+      return true;
+    }
+    const lifecycle = cliOutputLifecycle.parseCliBackendLifecycleLine({
+      line,
+      backendId: params.providerId,
+      backend: params.backend,
+      parse: params.parseJsonlLifecycleEvent,
+    });
+    if (lifecycle) {
+      if ("errorText" in lifecycle) {
+        parseErrorText = lifecycle.errorText;
+      } else {
+        if (claudeStreamJson && !accountClaudeJsonlLine(rawLine.length)) {
+          return true;
+        }
+        for (const event of lifecycle.events) {
+          params.onCompaction?.(cliOutputLifecycle.projectCliBackendLifecycleEvent(event));
+        }
+      }
       return true;
     }
     if (!params.parseJsonlEvent) {
