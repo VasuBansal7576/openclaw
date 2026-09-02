@@ -868,6 +868,7 @@ export function runAgentAttempt(params: {
       ? "openclaw"
       : undefined);
   if (!isRawModelRun && isCliExecutionProvider) {
+    const expectedLifecycleRevision = params.sessionEntry?.lifecycleRevision;
     return withLocalSessionPlacementTurnSettlement(
       {
         sessionId: params.sessionId,
@@ -884,9 +885,7 @@ export function runAgentAttempt(params: {
           });
           if (
             params.sessionEntry?.sessionId !== params.sessionId ||
-            (params.sessionTarget?.expectedLifecycleRevision !== undefined &&
-              params.sessionEntry.lifecycleRevision !==
-                params.sessionTarget.expectedLifecycleRevision)
+            params.sessionEntry.lifecycleRevision !== expectedLifecycleRevision
           ) {
             throw createAgentRunSupersededAbortError();
           }

@@ -917,11 +917,14 @@ describe("CLI attempt execution", () => {
     });
   });
 
-  it.each(["updated", "replaced"])(
+  it.each(["updated", "replaced", "revised", "revision-established"])(
     "refreshes a %s session after CLI placement admission",
     async (change) => {
       const sessionKey = "agent:main:cli-admission";
-      const sessionEntry = makeClaudeCliSessionEntry("admitted-session", "old-native-session");
+      const sessionEntry = {
+        ...makeClaudeCliSessionEntry("admitted-session", "old-native-session"),
+        ...(change === "revision-established" ? {} : { lifecycleRevision: "admitted-revision" }),
+      };
       const sessionStore = { [sessionKey]: sessionEntry };
       await writeSessionStoreSeed(sessionStore);
       hasClaudeSessionMock.mockReturnValue(true);
@@ -929,6 +932,10 @@ describe("CLI attempt execution", () => {
       const admittedEntry: SessionEntry = {
         ...sessionEntry,
         sessionId: change === "replaced" ? "replacement-session" : sessionEntry.sessionId,
+        lifecycleRevision:
+          change === "revised" || change === "revision-established"
+            ? "replacement-revision"
+            : sessionEntry.lifecycleRevision,
         permissionMode: "read-only",
         cliSessionBindings: {
           "claude-cli": { sessionId: "new-native-session", authProfileId: "anthropic:claude-cli" },
@@ -950,7 +957,7 @@ describe("CLI attempt execution", () => {
           body: "deliver completion",
           runId: "cli-admission",
         });
-        if (change === "replaced") {
+        if (change !== "updated") {
           await expect(run).rejects.toMatchObject({ code: "AGENT_RUN_SUPERSEDED_ABORT" });
           expect(runCliAgentMock).not.toHaveBeenCalled();
           return;
