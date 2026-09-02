@@ -76,10 +76,18 @@ describe("doctor missing default account binding warning", () => {
   });
 });
 
+type OwnershipRepairCase = {
+  name: string;
+  envToken?: boolean;
+  discord: NonNullable<OpenClawConfig["channels"]>["discord"];
+  bindings: NonNullable<OpenClawConfig["bindings"]>;
+  added: NonNullable<OpenClawConfig["bindings"]>;
+};
+
 describe("doctor channel account ownership repair", () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it.each([
+  it.each<OwnershipRepairCase>([
     {
       name: "implicit default account",
       discord: {},
@@ -178,13 +186,7 @@ describe("doctor channel account ownership repair", () => {
       ],
       added: [],
     },
-  ] satisfies Array<{
-    name: string;
-    envToken?: boolean;
-    discord: NonNullable<OpenClawConfig["channels"]>["discord"];
-    bindings: NonNullable<OpenClawConfig["bindings"]>;
-    added: NonNullable<OpenClawConfig["bindings"]>;
-  }>)("repairs only proven ownership for $name", (testCase) => {
+  ])("repairs only proven ownership for $name", (testCase) => {
     const { discord, bindings, added } = testCase;
     vi.stubEnv(
       "DISCORD_BOT_TOKEN",
