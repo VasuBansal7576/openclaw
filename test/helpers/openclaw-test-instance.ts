@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import type { Readable } from "node:stream";
+import { toErrorObject } from "@openclaw/normalization-core/error-coercion";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import {
   BUILD_STAMP_FILE,
@@ -686,7 +687,7 @@ async function runCommand(params: {
         { cause: result.error },
       );
     }
-    throw result.error;
+    throw toErrorObject(result.error, "Node script failed");
   }
   return {
     // A graceful child exit must not erase a parent interruption.
