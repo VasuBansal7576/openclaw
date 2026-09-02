@@ -29,6 +29,7 @@ import {
 } from "../../../infra/outbound/session-binding-service.js";
 import { normalizeLegacySessionEntryDelivery } from "../../../infra/state-migrations.legacy-session-store.js";
 import { setActivePluginRegistry } from "../../../plugins/runtime.js";
+import { createDeferredCore } from "../../../shared/deferred.js";
 import {
   createChannelTestPluginBase,
   createTestRegistry,
@@ -107,14 +108,15 @@ afterEach(() => {
 });
 
 describe("queued completion handoff", () => {
-  it.each(["delivered", "source retired", "execution timeout"] as const)(
+  it.each(["delivered", "source retired", "execution timeout", "delivery deadline"] as const)(
     "keeps an accepted busy-parent completion pending until execution: %s",
     async (outcome) => {
       vi.useFakeTimers();
-      const accepted = Promise.withResolvers<InternalAgentTurnDispatchOptions>();
-      const parentSettled = Promise.withResolvers<void>();
-      const executionSettled = Promise.withResolvers<void>();
-      const executionStarted = Promise.withResolvers<void>();
+      const accepted = createDeferredCore<InternalAgentTurnDispatchOptions>();
+      const parentSettled = createDeferredCore();
+      const executionSettled = createDeferredCore();
+      const executionStarted = createDeferredCore();
+      const deliveryDeadline = new AbortController();
       let sourceAllowed = true;
       let executed = false;
       const dispatchGatewayMethodInProcess: typeof runtimeDispatchGatewayMethodInProcess = async <
@@ -148,6 +150,7 @@ describe("queued completion handoff", () => {
           queued: false,
           reason: "no_active_run",
           sessionId: "busy-parent",
+          gatewayHealth: "live",
         }),
       });
       let finished = false;
@@ -160,6 +163,7 @@ describe("queued completion handoff", () => {
         steerMessage: "Child result ready",
         directIdempotencyKey: "busy-parent-completion",
         isSourceSessionEffectsAllowed: () => sourceAllowed,
+        signal: deliveryDeadline.signal,
       }).finally(() => {
         finished = true;
       });
@@ -168,6 +172,14 @@ describe("queued completion handoff", () => {
         await vi.advanceTimersByTimeAsync(120_001);
         expect(finished).toBe(false);
         expect(executed).toBe(false);
+        if (outcome === "delivery deadline") {
+          deliveryDeadline.abort(new Error("completion delivery expired"));
+          expect(await delivery).toMatchObject({ delivered: false, path: "none" });
+          parentSettled.resolve();
+          await vi.advanceTimersByTimeAsync(0);
+          expect(executed).toBe(false);
+          return;
+        }
         sourceAllowed = outcome !== "source retired";
         parentSettled.resolve();
         if (outcome === "execution timeout") {
