@@ -90,6 +90,8 @@ final class DashboardWindowController: NSWindowController, WKNavigationDelegate,
     var gatewaySnapshot: DashboardGatewaySnapshot?
     var notificationPermission = "notDetermined"
     var notificationTestOutcome: TestNotificationOutcome?
+    private(set) var notificationSourceID = UUID().uuidString
+    var onBackgroundSessionOpen: ((DashboardBackgroundSessionCompletion, URL) -> Void)?
     let tlsParams: GatewayTLSParams?
     private let dashboardFrameAutosaveName: String
     private let updater: UpdaterProviding?
@@ -1356,6 +1358,7 @@ extension DashboardWindowController {
     /// never pass through `load(_:)`, so commands queue for the new document.
     func webView(_ webView: WKWebView, didCommit _: WKNavigation!) {
         guard webView === self.webView else { return }
+        self.notificationSourceID = UUID().uuidString
         self.hasLiveContent = false
         // Swipe-back/⌘[ can leave the failure page through WKWebView history
         // without a `load(_:)`; a committed http(s) document is a real

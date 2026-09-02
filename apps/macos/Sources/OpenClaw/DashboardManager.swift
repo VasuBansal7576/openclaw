@@ -736,7 +736,7 @@ final class DashboardManager {
         reusingWindow: NSWindow? = nil) -> DashboardWindowController
     {
         let primaryLocal = !auxiliary && target == .primary && configuration.mode == .local
-        return DashboardWindowController(
+        let controller = DashboardWindowController(
             url: configuration.url,
             auth: configuration.auth,
             websiteDataStore: self.websiteDataStore,
@@ -751,6 +751,58 @@ final class DashboardManager {
                 guard primaryLocal else { return false }
                 return await BrowserProfileImportModel.shared.requestAutomaticOfferIfEligible(while: shouldApply)
             })
+        controller.onBackgroundSessionOpen = { [weak self] completion, sourceURL in
+            Task { @MainActor in
+                await self?.openBackgroundSession(
+                    completion, target: target, sourceURL: sourceURL)
+            }
+        }
+        return controller
+    }
+
+    func openBackgroundSession(
+        _ completion: DashboardBackgroundSessionCompletion,
+        target: DashboardGatewayTarget,
+        sourceURL: URL) async
+    {
+        do {
+            let configuration = try await self.windowConfiguration(for: target)
+            guard sourceURL == Self.notificationRoute(configuration.url) else {
+                throw NSError(domain: "Dashboard", code: 1, userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "This Gateway connection changed. Open the session from its Gateway's session list.",
+                ])
+            }
+            await self.performOpenOrFocusDashboard(for: target)
+            guard let controller = self.dashboardController(for: target),
+                  sourceURL == Self.notificationRoute(controller.dashboardBaseURL),
+                  let fallbackURL = DashboardRouteMap.dashboardURL(
+                      byAppendingSameAppPath: completion.path,
+                      search: completion.search,
+                      to: controller.dashboardBaseURL)
+            else {
+                throw NSError(domain: "Dashboard", code: 1, userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "The originating Gateway window is no longer available. Open the session from its Gateway's session list.",
+                ])
+            }
+            controller.dispatchNativeNavigation(DashboardNativeNavigation(
+                path: completion.path, search: completion.search, fallbackURL: fallbackURL))
+        } catch {
+            Self.showGatewayError(error, message: "Could Not Open Background Session")
+        }
+    }
+
+    static func notificationRoute(_ url: URL) -> URL? {
+        // Retain only Gateway origin and mount. Authentication is supplied by
+        // the current owner when a notification opens its session.
+        guard let source = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        var route = URLComponents()
+        route.scheme = source.scheme
+        route.host = source.host
+        route.port = source.port
+        route.path = source.path
+        return route.url
     }
 
     private func installAuxiliaryWindowCloseHandler(_ controller: DashboardWindowController, windowID: UUID) {
