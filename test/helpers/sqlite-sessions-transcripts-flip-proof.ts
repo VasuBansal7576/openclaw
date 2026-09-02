@@ -160,21 +160,21 @@ export async function runSqliteSessionsTranscriptsFlipProof(options: RunOptions 
           throw new Error(`expected built CLI entrypoint, got ${gatewayEntrypoint.join(" ")}`);
         }
         if (options.requireBuiltCli === true) {
-          const inventory = await inst.cli(["plugins", "list", "--json"]);
-          const plugins = parseJsonObject(inventory.stdout)?.plugins;
-          if (inventory.code !== 0 || !Array.isArray(plugins)) {
-            throw new Error("built CLI could not list bundled plugin artifacts");
+          // Inspect the exercised provider; the full inventory can exceed the bounded CLI capture.
+          const inventory = await inst.cli(["plugins", "inspect", "openai", "--json"]);
+          const plugin = asRecord(parseJsonObject(inventory.stdout)?.plugin);
+          if (
+            inventory.code !== 0 ||
+            plugin?.origin !== "bundled" ||
+            typeof plugin.id !== "string" ||
+            typeof plugin.source !== "string"
+          ) {
+            throw new Error(
+              `built CLI could not inspect the bundled provider artifact (code=${String(inventory.code)} signal=${String(inventory.signal)})\n` +
+                `CLI stdout:\n${tail(inventory.stdout)}\nCLI stderr:\n${tail(inventory.stderr)}`,
+            );
           }
-          bundledPlugins = plugins.flatMap((value) => {
-            const plugin = asRecord(value);
-            if (plugin?.origin !== "bundled") {
-              return [];
-            }
-            if (typeof plugin.id !== "string" || typeof plugin.source !== "string") {
-              throw new Error("bundled plugin inventory omitted its identity or source artifact");
-            }
-            return [{ id: plugin.id, source: plugin.source }];
-          });
+          bundledPlugins = [{ id: plugin.id, source: plugin.source }];
         }
 
         await startMockOpenAiServer(context, {
