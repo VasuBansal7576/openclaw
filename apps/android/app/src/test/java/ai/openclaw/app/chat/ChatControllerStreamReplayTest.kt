@@ -755,47 +755,53 @@ class ChatControllerStreamReplayTest {
       gateway.respondWith("chat.history", historyResponse("session-global", initial))
       gateway.respondChatSend(status = "started")
       val controller = newController(gateway)
-      controller.load("global")
-      runCurrent()
+      try {
+        controller.load("global")
+        runCurrent()
 
-      assertTrue(controller.sendMessageAwaitAcceptance("local question", "off", emptyList()))
-      val runId = requireNotNull(gateway.lastRunId)
-      val optimisticId =
-        controller.messages.value
-          .last()
-          .id
-      controller.handleGatewayEvent("chat", chatDeltaPayload("global", runId, 1, "working", "working"))
-      controller.handleGatewayEvent(
-        "agent",
-        """{"sessionKey":"global","runId":"$runId","stream":"tool","data":{"phase":"start","name":"exec","toolCallId":"local-tool"}}""",
-      )
-      val pendingTools = controller.pendingToolCalls.value
-      assertEquals(1, pendingTools.size)
-      val updated = initial + ReplayHistoryMessage("assistant", "second answer", 2_000, entryId = "voice-4")
-      gateway.respondWith("chat.history", historyResponse("session-global", updated, inFlightRun = runId to "working"))
-      val historyRequests = gateway.callCount("chat.history")
+        assertTrue(controller.sendMessageAwaitAcceptance("local question", "off", emptyList()))
+        val runId = requireNotNull(gateway.lastRunId)
+        val optimisticId =
+          controller.messages.value
+            .last()
+            .id
+        controller.handleGatewayEvent("chat", chatDeltaPayload("global", runId, 1, "working", "working"))
+        controller.handleGatewayEvent(
+          "agent",
+          """{"sessionKey":"global","runId":"$runId","stream":"tool","data":{"phase":"start","name":"exec","toolCallId":"local-tool"}}""",
+        )
+        val pendingTools = controller.pendingToolCalls.value
+        assertEquals(1, pendingTools.size)
+        val updated = initial + ReplayHistoryMessage("assistant", "second answer", 2_000, entryId = "voice-4")
+        gateway.respondWith("chat.history", historyResponse("session-global", updated, inFlightRun = runId to "stale history text"))
+        val historyRequests = gateway.callCount("chat.history")
 
-      controller.handleGatewayEvent("session.message", sessionMessagePayload("global", agentId = "other"))
-      controller.handleGatewayEvent("session.message", sessionMessagePayload("agent:main:other"))
-      runCurrent()
-      assertEquals(historyRequests, gateway.callCount("chat.history"))
+        controller.handleGatewayEvent("session.message", sessionMessagePayload("global", agentId = "other"))
+        controller.handleGatewayEvent("session.message", sessionMessagePayload("agent:main:other"))
+        runCurrent()
+        assertEquals(historyRequests, gateway.callCount("chat.history"))
 
-      controller.handleGatewayEvent("session.message", sessionMessagePayload("global"))
-      runCurrent()
+        controller.handleGatewayEvent("session.message", sessionMessagePayload("global"))
+        runCurrent()
+        advanceTimeBy(750)
+        runCurrent()
 
-      assertEquals(updated.map { it.role to it.text } + ("user" to "local question"), transcript(controller))
-      assertEquals(
-        optimisticId,
-        controller.messages.value
-          .last()
-          .id,
-      )
-      assertEquals("working", controller.streamingAssistantText.value)
-      assertEquals(pendingTools, controller.pendingToolCalls.value)
-      assertEquals(1, controller.pendingRunCount.value)
-      assertEquals("global", controller.sessionKey.value)
-      assertNull(controller.errorText.value)
-      controller.onDisconnected("test cleanup")
+        assertEquals(updated.map { it.role to it.text } + ("user" to "local question"), transcript(controller))
+        assertEquals(historyRequests + 1, gateway.callCount("chat.history"))
+        assertEquals(
+          optimisticId,
+          controller.messages.value
+            .last()
+            .id,
+        )
+        assertEquals("working", controller.streamingAssistantText.value)
+        assertEquals(pendingTools, controller.pendingToolCalls.value)
+        assertEquals(1, controller.pendingRunCount.value)
+        assertEquals("global", controller.sessionKey.value)
+        assertNull(controller.errorText.value)
+      } finally {
+        controller.onDisconnected("test cleanup")
+      }
     }
 
   @Test
