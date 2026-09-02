@@ -1725,6 +1725,79 @@ class TalkModeManagerTest {
     }
 
   @Test
+  fun providerClearCannotCompletePushToTalkCancellation() =
+    runBlocking {
+      installSpeechRecognitionService()
+      val pending = CompletableDeferred<Pair<String, WebSocket>>()
+      val providerClearDrained = CompletableDeferred<Unit>()
+      withRealtimePlayback(interceptRequest = { request, socket ->
+        when (request.getValue("method").jsonPrimitive.content) {
+          "talk.session.cancelOutput" -> {
+            pending.complete(request.getValue("id").jsonPrimitive.content to socket)
+            true
+          }
+
+          "talk.session.acknowledgeMark" -> {
+            if (request["params"]
+                ?.jsonObject
+                ?.get("markName")
+                ?.jsonPrimitive
+                ?.content == "after-provider-clear"
+            ) {
+              providerClearDrained.complete(Unit)
+            }
+            false
+          }
+
+          else -> {
+            false
+          }
+        }
+      }) { proof ->
+        suspend fun awaitState(condition: () -> Boolean) {
+          val deadline = System.nanoTime() + 5_000_000_000L
+          while (!condition()) {
+            proof.scheduler.runCurrent()
+            proof.drainCancelledCapture()
+            check(System.nanoTime() < deadline) { "Timed out waiting for push-to-talk cancellation boundary" }
+            withContext(Dispatchers.Default) { delay(10) }
+          }
+        }
+        proof.manager.realtimeEvent("""{"relaySessionId":"playback-relay","type":"audio","talkEvent":{"turnId":"old-turn"},"audioBase64":"AAA="}""")
+        val starting = proof.scope.async { runCatching { proof.manager.beginPushToTalk(allowNewCapture = true) } }
+        awaitState { pending.isCompleted }
+        val clear = readPrivateField(proof.manager, "pendingRealtimeOutputClear") as CompletableDeferred<*>
+        val (requestId, socket) = pending.await()
+        var replied = false
+        try {
+          socket.send("""{"type":"event","event":"talk.event","payload":{"relaySessionId":"playback-relay","type":"clear","reason":"barge-in"}}""")
+          // A mark after clear observes the real playback queue retiring before its acknowledgement.
+          socket.send("""{"type":"event","event":"talk.event","payload":{"relaySessionId":"playback-relay","type":"mark","markName":"after-provider-clear"}}""")
+          awaitState { providerClearDrained.isCompleted && !proof.manager.audioRetirement.pending }
+          val completedByUnkeyedClear = clear.isCompleted
+          assertFalse("PTT must still await the cancellation RPC", starting.isCompleted)
+
+          socket.send("""{"type":"event","event":"talk.event","payload":{"relaySessionId":"playback-relay","type":"clear","talkEvent":{"type":"turn.cancelled","turnId":"old-turn"}}}""")
+          socket.send("""{"type":"res","id":"$requestId","ok":true,"payload":{"ok":true,"status":"applied","turnId":"old-turn"}}""")
+          replied = true
+          awaitState { starting.isCompleted }
+
+          assertEquals(
+            "A provider playback clear must not poison a matching push-to-talk cancellation",
+            mapOf("unkeyedClearCompletedCancellation" to false, "relaySessionId" to "playback-relay", "pushToTalkStarted" to true),
+            mapOf(
+              "unkeyedClearCompletedCancellation" to completedByUnkeyedClear,
+              "relaySessionId" to readPrivateField(proof.manager, "realtimeSessionId"),
+              "pushToTalkStarted" to starting.await().isSuccess,
+            ),
+          )
+        } finally {
+          if (!replied) socket.send("""{"type":"res","id":"$requestId","ok":true,"payload":{"ok":true,"status":"idle"}}""")
+        }
+      }
+    }
+
+  @Test
   fun delayedStartFailureCannotStopTheReplacementRelay() =
     runBlocking {
       val creates =

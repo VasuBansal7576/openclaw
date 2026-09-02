@@ -480,6 +480,7 @@ struct RealtimeTalkRelaySessionCancellationTests {
             try await barrier.waitUntilEntered()
             await barrier.release()
             await cancellationTask.value
+            await session._test_handleGatewayEvent(outputClearEvent())
             #expect(session._test_enqueueMicrophoneFrame(Data([0x01])) == nil)
             await session._test_handleGatewayEvent(outputAudioEvent(turnId: "turn-2"))
             #expect(speakingStates == [true, false])

@@ -645,10 +645,8 @@ extension RealtimeTalkRelaySession {
                 if self.outputCancellationTask == nil { self.retireOutputCancellation() }
             }
         }
-        let currentMatches =
-            clearIdentity.isEmpty()
-            ? self.outputIdentity == nil
-            : self.outputIdentity?.relation(to: clearIdentity) == .same
+        // Unkeyed provider clears stop the relay sink without settling a turn-scoped cancellation.
+        let currentMatches = clearIdentity.isEmpty() || self.outputIdentity?.relation(to: clearIdentity) == .same
         guard clearsSuppressed || currentMatches else { return }
         let marks = self.takePendingPlaybackMarks()
         // Cancellation already published the stopped state. A later clear with no

@@ -230,23 +230,12 @@ export function createTalkRealtimeRelaySession(
         }
       },
       clearAudio: (reason) => {
-        const relay = getActiveRelay();
-        if (!relay) {
+        if (!getActiveRelay()) {
           return;
         }
-        const outputTurnId = outputOwnership.resolve(false);
-        if (!outputTurnId) {
-          return;
-        }
-        emit(
-          { relaySessionId, type: "clear", ...(reason ? { reason } : {}) },
-          {
-            type: "output.audio.done",
-            turnId: outputTurnId,
-            payload: { reason: reason ?? "clear" },
-            final: true,
-          },
-        );
+        // Playback outlives provider completion, and a newer response may already own a turn.
+        // Clear the live relay's sink without borrowing that response's identity.
+        emit({ relaySessionId, type: "clear", ...(reason ? { reason } : {}) });
       },
       sendMark: (markName) => {
         const relay = getActiveRelay();
