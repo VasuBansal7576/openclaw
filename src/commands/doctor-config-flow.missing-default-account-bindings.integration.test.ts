@@ -1,6 +1,11 @@
 // Doctor default-account integration tests cover binding warnings across realistic config shapes.
-import { describe, expect, it } from "vitest";
-import type { OpenClawConfig } from "../config/config.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { readConfigFileSnapshot, type OpenClawConfig } from "../config/config.js";
+import { withEnvOverride, withTempHome, writeOpenClawConfig } from "../config/test-helpers.js";
+import { runInitialConfigWriteHealth } from "../flows/doctor-health-contribution-runners.config.js";
+import { resolveAgentRoute } from "../routing/resolve-route.js";
+import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
+import { prepareDoctorContext } from "./doctor-config-flow.test-support.js";
 import {
   collectMissingDefaultAccountBindingWarnings,
   collectMissingExplicitDefaultAccountWarnings,
@@ -58,5 +63,116 @@ describe("doctor missing default account binding warning", () => {
     expect(warnings).toEqual([
       '- channels.telegram: defaultAccount is set to "missing" but does not match configured accounts (alerts, work). Set channels.telegram.defaultAccount to one of these accounts, or add channels.telegram.accounts.default to avoid fallback routing.',
     ]);
+  });
+});
+
+describe("doctor channel account ownership repair", () => {
+  afterEach(() => closeOpenClawStateDatabaseForTest());
+
+  it.each([
+    {
+      name: "implicit default account",
+      discord: {},
+      bindings: [{ agentId: "ops", match: { channel: "discord", guildId: "guild-a" } }],
+      added: [{ agentId: "ops", match: { channel: "discord", accountId: "default" } }],
+    },
+    {
+      name: "named account without widening other account or guild owners",
+      discord: { accounts: { alerts: {}, work: {} } },
+      bindings: [
+        { agentId: "ops", match: { channel: "discord", accountId: "alerts", guildId: "guild-a" } },
+        { agentId: "ops", match: { channel: "discord", accountId: "alerts", guildId: "guild-b" } },
+        { agentId: "research", match: { channel: "discord", accountId: "work" } },
+      ],
+      added: [{ agentId: "ops", match: { channel: "discord", accountId: "alerts" } }],
+    },
+    {
+      name: "narrow wildcard ownership without inventing a default account",
+      discord: { accounts: { alerts: {}, work: { enabled: false } } },
+      bindings: [
+        { agentId: "ops", match: { channel: "discord", accountId: "*", guildId: "guild-a" } },
+      ],
+      added: [{ agentId: "ops", match: { channel: "discord", accountId: "alerts" } }],
+    },
+    {
+      name: "disabled default account alongside an active account",
+      discord: { accounts: { default: { enabled: false }, work: {} } },
+      bindings: [
+        { agentId: "ops", match: { channel: "discord", guildId: "guild-a" } },
+        {
+          agentId: "research",
+          match: { channel: "discord", accountId: "work", guildId: "guild-b" },
+        },
+      ],
+      added: [{ agentId: "research", match: { channel: "discord", accountId: "work" } }],
+    },
+    {
+      name: "disabled channel",
+      discord: { enabled: false },
+      bindings: [{ agentId: "ops", match: { channel: "discord", guildId: "guild-a" } }],
+      added: [],
+    },
+    {
+      name: "unconfigured legacy main owner",
+      discord: {},
+      bindings: [{ agentId: "main", match: { channel: "discord", guildId: "guild-a" } }],
+      added: [],
+    },
+    {
+      name: "ambiguous guild owners",
+      discord: {},
+      bindings: [
+        { agentId: "ops", match: { channel: "discord", guildId: "guild-a" } },
+        { agentId: "research", match: { channel: "discord", guildId: "guild-b" } },
+      ],
+      added: [],
+    },
+    {
+      name: "missing owner despite bindings on another account and channel",
+      discord: { accounts: { default: {}, work: {} } },
+      bindings: [
+        { agentId: "ops", match: { channel: "discord", accountId: "work" } },
+        { agentId: "ops", match: { channel: "telegram", accountId: "default" } },
+      ],
+      added: [],
+    },
+    {
+      name: "existing channel-wide route",
+      discord: { accounts: { default: {}, work: {} } },
+      bindings: [
+        { agentId: "research", match: { channel: "discord", accountId: "*" } },
+        { agentId: "ops", match: { channel: "discord", guildId: "guild-a" } },
+      ],
+      added: [],
+    },
+  ] satisfies Array<{
+    name: string;
+    discord: NonNullable<OpenClawConfig["channels"]>["discord"];
+    bindings: NonNullable<OpenClawConfig["bindings"]>;
+    added: NonNullable<OpenClawConfig["bindings"]>;
+  }>)("persists only proven ownership for $name", async ({ discord, bindings, added }) => {
+    await withTempHome(async (home) => {
+      await withEnvOverride({ OPENCLAW_DISABLE_BUNDLED_PLUGINS: "1" }, async () => {
+        const configPath = await writeOpenClawConfig(home, {
+          agents: { entries: { ops: {}, research: {} } },
+          channels: { discord },
+          bindings,
+          gateway: { mode: "local" },
+          plugins: { enabled: false },
+        });
+        const ctx = await prepareDoctorContext(configPath);
+        await runInitialConfigWriteHealth(ctx);
+        expect(ctx.configWriteRefusal).toBeUndefined();
+
+        const saved = await readConfigFileSnapshot();
+        expect(saved.config.bindings).toEqual([...bindings, ...added]);
+        for (const binding of added) {
+          expect(resolveAgentRoute({ cfg: saved.config, ...binding.match }).agentId).toBe(
+            binding.agentId,
+          );
+        }
+        expect((await prepareDoctorContext(configPath)).configResult.shouldWriteConfig).toBe(false);
+      });
+    });
   });
 });

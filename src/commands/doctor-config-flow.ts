@@ -414,6 +414,12 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
     emitWarnings: true,
   });
 
+  const { repairUnownedChannelAccountBindings } =
+    await import("./doctor/shared/legacy-config-binding-repair.js");
+  applyConfigMutation(repairUnownedChannelAccountBindings(state.candidate), {
+    fixHint: `Run "${doctorFixCommand}" to bind channel accounts with a single existing route owner.`,
+  });
+
   const { prepareTailscaleConfigMigration } = await import("./doctor-tailscale.js");
   applyConfigMutation(
     await prepareTailscaleConfigMigration({
