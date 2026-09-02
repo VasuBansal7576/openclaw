@@ -191,6 +191,10 @@ const port = Number(argv[argv.indexOf("--port") + 1]);
 const env = Object.fromEntries(["HOME", "OPENCLAW_CONFIG_PATH", "OPENCLAW_GATEWAY_TOKEN", "OPENCLAW_STATE_DIR"].map((key) => [key, process.env[key]]));
 appendFileSync(tracePath, JSON.stringify({ argv, config: JSON.parse(readFileSync(process.env.OPENCLAW_CONFIG_PATH, "utf8")), cwd: process.cwd(), env, pid: process.pid, port }) + "\\n");
 const kind = (process.env.OPENCLAW_FAKE_GATEWAY_SEQUENCE || "ready").split(",")[attempt - 1] || "ready";
+if (kind === "cli" && argv[0] === "json") {
+  process.stdout.write(JSON.stringify({ text: "😀".repeat(100_000), complete: true }), () => process.exit(0));
+  await new Promise(() => {});
+}
 process.stdout.write("fake gateway attempt " + attempt + "\\n");
 if (kind === "cli") {
   process.stderr.write("cli diagnostic\\n");
@@ -198,6 +202,7 @@ if (kind === "cli") {
     setInterval(() => {}, 1_000);
     await new Promise(() => {});
   }
+  if (argv[0] === "signal") process.kill(process.pid, "SIGTERM");
   process.exit(Number(argv[0]));
 }
 const refusal = ${JSON.stringify(MIGRATION_CONVERGENCE_REFUSAL)};
@@ -298,6 +303,9 @@ describe("openclaw test instance", () => {
     { mode: "0", prepare: false },
     { mode: "7", prepare: false },
     { mode: "wait", prepare: false },
+    // A Windows self-signal exits with code 1; it does not set the parent's signal field.
+    ...(process.platform === "win32" ? [] : [{ mode: "signal", prepare: false }]),
+    { mode: "json", prepare: false },
     { mode: "0", prepare: true },
   ])("releases the CLI deadline after $mode (prepare=$prepare)", async ({ mode, prepare }) => {
     const control = prepare ? await createGatewayControl() : undefined;
@@ -323,10 +331,20 @@ describe("openclaw test instance", () => {
       const command = trackOperation(scope.run(true, () => instance.cli([mode], { timeoutMs })));
       if (mode === "wait") {
         await expect(command).rejects.toThrow(`command timed out after ${timeoutMs}ms`);
+        await expect(command).rejects.toThrow("fake gateway attempt 1");
+        await expect(command).rejects.toThrow("cli diagnostic");
+      } else if (mode === "json") {
+        const result = await command;
+        expect({ ...result, stdout: JSON.parse(result.stdout) }).toEqual({
+          code: 0,
+          signal: null,
+          stdout: { text: "😀".repeat(100_000), complete: true },
+          stderr: "",
+        });
       } else {
         await expect(command).resolves.toEqual({
-          code: Number(mode),
-          signal: null,
+          code: mode === "signal" ? null : Number(mode),
+          signal: mode === "signal" ? "SIGTERM" : null,
           stdout: "fake gateway attempt 1\n",
           stderr: "cli diagnostic\n",
         });
@@ -1091,24 +1109,6 @@ describe("openclaw test instance", () => {
 
     expect(fetchImpl).toHaveBeenCalledOnce();
     expect(Date.now() - startedAt).toBeLessThan(500);
-  });
-
-  it("signals test instance process groups on POSIX", () => {
-    const child = {
-      pid: 1234,
-      kill: vi.fn(() => true),
-    };
-    const killProcess = vi.fn(() => true);
-
-    testing.signalOpenClawTestProcess(child, "SIGKILL", killProcess);
-
-    if (process.platform === "win32") {
-      expect(killProcess).not.toHaveBeenCalled();
-      expect(child.kill).toHaveBeenCalledWith("SIGKILL");
-    } else {
-      expect(killProcess).toHaveBeenCalledWith(-1234, "SIGKILL");
-      expect(child.kill).not.toHaveBeenCalled();
-    }
   });
 
   it("creates isolated config and spawn env without mutating process env", async () => {

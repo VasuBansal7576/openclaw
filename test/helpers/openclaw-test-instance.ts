@@ -5,18 +5,21 @@ import fs from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import type { Readable } from "node:stream";
+import { coerceErrorMessage } from "@openclaw/normalization-core/error-coercion";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import {
   BUILD_STAMP_FILE,
   RUNTIME_POSTBUILD_STAMP_FILE,
 } from "../../scripts/lib/local-build-metadata-paths.mts";
 import { terminateManagedChild } from "../../scripts/lib/managed-child-process.mts";
+import { resolveMaxOutputBytes } from "../../src/process/exec-output.js";
 import {
   createOpenClawTestState,
   type OpenClawTestState,
 } from "../../src/test-utils/openclaw-test-state.js";
 import { sleep } from "../../src/utils.js";
 import { decodeUtf8Tail } from "./bounded-child-output.js";
+import { runNodeScript } from "./run-node-script.js";
 
 type OpenClawTestStateOptions = NonNullable<Parameters<typeof createOpenClawTestState>[0]>;
 
@@ -85,7 +88,6 @@ type BoundedStringLog = string[] & {
   truncated?: boolean;
 };
 
-type OpenClawTestChildProcess = Pick<OpenClawTestProcess, "kill" | "pid">;
 type OpenClawTestProcessReadiness = Pick<OpenClawTestProcess, "exitCode" | "signalCode"> & {
   once: (event: "exit", listener: () => void) => unknown;
   off: (event: "exit", listener: () => void) => unknown;
@@ -183,8 +185,8 @@ async function prepareGatewayEntrypoint(cwd: string): Promise<string[]> {
   }
 
   // Share command ownership so successful preparation cannot retain its deadline.
-  const completed = await runCommand({
-    args: ["node", "scripts/run-node.mjs", "--help"],
+  const completed = await runNodeCommand({
+    args: ["scripts/run-node.mjs", "--help"],
     cwd,
     env: { ...process.env, VITEST: "1" },
     timeoutMs: GATEWAY_ENTRYPOINT_PREPARE_TIMEOUT_MS,
@@ -193,7 +195,7 @@ async function prepareGatewayEntrypoint(cwd: string): Promise<string[]> {
     throw new Error(
       `failed preparing gateway entrypoint (code=${String(completed.code)} signal=${String(
         completed.signal,
-      )})\n${formatLogs([completed.stdout], [completed.stderr])}`,
+      )})\n${formatCommandLogs(completed.stdout, completed.stderr)}`,
     );
   }
 
@@ -416,6 +418,14 @@ function formatLogs(stdout: string[], stderr: string[]): string {
   return `--- stdout ---\n${readLogBuffer(stdout)}\n--- stderr ---\n${readLogBuffer(stderr)}`;
 }
 
+function formatCommandLogs(stdout: string, stderr: string): string {
+  const stdoutTail = createBoundedStringLog();
+  const stderrTail = createBoundedStringLog();
+  appendLogChunk(stdoutTail, stdout);
+  appendLogChunk(stderrTail, stderr);
+  return formatLogs(stdoutTail, stderrTail);
+}
+
 function createInstanceEnv(params: {
   stateEnv: NodeJS.ProcessEnv;
   extraEnv: Record<string, string | undefined>;
@@ -513,7 +523,7 @@ export async function createOpenClawTestInstance(
       cwd,
       env,
       stdio: ["ignore", "pipe", "pipe"],
-      detached: shouldUseOpenClawTestProcessGroup(),
+      detached: process.platform !== "win32",
     });
     next.stdout.setEncoding("utf8");
     next.stderr.setEncoding("utf8");
@@ -573,8 +583,8 @@ export async function createOpenClawTestInstance(
     entrypoint: () => resolveGatewayEntrypoint(cwd),
     cli: async (args, commandOptions = {}) => {
       const entrypoint = await resolveGatewayEntrypoint(cwd);
-      return await runCommand({
-        args: ["node", ...entrypoint, ...args],
+      return await runNodeCommand({
+        args: [...entrypoint, ...args],
         cwd,
         env,
         timeoutMs: commandOptions.timeoutMs ?? COMMAND_TIMEOUT_MS,
@@ -658,70 +668,34 @@ export async function createOpenClawTestInstance(
   return instance;
 }
 
-async function runCommand(params: {
+async function runNodeCommand(params: {
   args: string[];
   cwd: string;
   env: NodeJS.ProcessEnv;
   timeoutMs: number;
 }): Promise<OpenClawTestInstanceCommandResult> {
-  const [command, ...args] = params.args;
-  if (!command) {
-    throw new Error("missing command");
-  }
-  const stdout = createBoundedStringLog();
-  const stderr = createBoundedStringLog();
-  const child = spawn(command, args, {
+  let child: Pick<OpenClawTestProcess, "exitCode" | "signalCode"> | undefined;
+  const { error, stdout, stderr } = await runNodeScript(params.args, params.env, params.timeoutMs, {
     cwd: params.cwd,
-    env: params.env,
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: shouldUseOpenClawTestProcessGroup(),
+    // CLI consumers parse complete documents. Overflow must fail instead of
+    // silently replacing their beginning with a Gateway diagnostic tail.
+    maxBuffer: resolveMaxOutputBytes(undefined, "stdout"),
+    onReady(process) {
+      child = process;
+    },
   });
-  child.stdout?.setEncoding("utf8");
-  child.stderr?.setEncoding("utf8");
-  child.stdout?.on("data", (d) => appendLogChunk(stdout, d));
-  child.stderr?.on("data", (d) => appendLogChunk(stderr, d));
-
-  const deadline = new AbortController();
-  const completed = await Promise.race([
-    new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
-      child.once("error", reject);
-      child.once("exit", (code, signal) => resolve({ code, signal }));
-    }),
-    sleep(params.timeoutMs, deadline.signal).then(() => null),
-  ]).finally(() => deadline.abort());
-  if (completed === null) {
-    signalOpenClawTestProcess(child, "SIGKILL");
-    await waitForGatewayClose(child, GATEWAY_STOP_TIMEOUT_MS);
+  if (error) {
     throw new Error(
-      `command timed out after ${params.timeoutMs}ms: ${params.args.join(" ")}\n${formatLogs(stdout, stderr)}`,
+      `${coerceErrorMessage(error)}: ${params.args.join(" ")}\n${formatCommandLogs(stdout, stderr)}`,
+      { cause: error },
     );
   }
   return {
-    ...completed,
-    stdout: readLogBuffer(stdout),
-    stderr: readLogBuffer(stderr),
+    code: child?.exitCode ?? null,
+    signal: child?.signalCode ?? null,
+    stdout,
+    stderr,
   };
-}
-
-function shouldUseOpenClawTestProcessGroup(): boolean {
-  return process.platform !== "win32";
-}
-
-function signalOpenClawTestProcess(
-  child: OpenClawTestChildProcess,
-  signal: NodeJS.Signals,
-  killProcess: (pid: number, signal: NodeJS.Signals) => boolean = (pid, nextSignal) =>
-    process.kill(pid, nextSignal),
-): void {
-  if (shouldUseOpenClawTestProcessGroup() && typeof child.pid === "number") {
-    try {
-      killProcess(-child.pid, signal);
-      return;
-    } catch {
-      // Fall back to the direct child if the process group already exited.
-    }
-  }
-  child.kill(signal);
 }
 
 export const testing = {
@@ -729,7 +703,6 @@ export const testing = {
   createBoundedStringLog,
   formatLogs,
   isGatewayMigrationConvergenceRefusal,
-  signalOpenClawTestProcess,
   stopGatewayProcess,
   waitForGatewayReady,
 };
