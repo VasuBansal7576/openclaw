@@ -227,8 +227,21 @@ cp "$ROOT_DIR/package.json" "$harness_package_json"
 node --import tsx "$ROOT_DIR/scripts/e2e/lib/npm-telegram-live/prepare-package.mts" "$harness_package_json"
 cleanup() {
   local rc=$?
+  local failure_phase="none"
   trap - EXIT
-  printf 'schema=1\nexit_code=%s\nlive_output=job_log\n' "$rc" > "$OUTPUT_DIR_HOST/run-metadata.txt"
+  if [ "$rc" -ne 0 ]; then
+    failure_phase="unclassified"
+    if [ -f "$OUTPUT_DIR_HOST/failure-phase.txt" ]; then
+      read -r failure_phase_candidate < "$OUTPUT_DIR_HOST/failure-phase.txt" || true
+      case "$failure_phase_candidate" in
+        runtime-probe | hotpath-plugin-help | hotpath-plugin-install | hotpath-onboard | hotpath-channel-add | hotpath-doctor-fix | hotpath-doctor-check | telegram-live-runner)
+          failure_phase="$failure_phase_candidate"
+          ;;
+      esac
+    fi
+  fi
+  printf 'schema=1\nexit_code=%s\nlive_output=job_log\nfailure_phase=%s\n' \
+    "$rc" "$failure_phase" > "$OUTPUT_DIR_HOST/run-metadata.txt"
   rm -rf "$npm_prefix_host"
   rm -rf "$harness_root"
   exit "$rc"
@@ -436,7 +449,7 @@ run_logged_print_heartbeat "npm-telegram-live-suite" 60 docker_e2e_run_with_harn
   ${prepublish_registry_mount_args[@]+"${prepublish_registry_mount_args[@]}"} \
   -v "$npm_prefix_host:/npm-global" \
   -i "$IMAGE_NAME" bash -s <<'EOF'
-set -euo pipefail
+set -Eeuo pipefail
 source scripts/lib/openclaw-e2e-instance.sh
 source scripts/e2e/lib/prepublish-plugin-registry.sh
 
@@ -470,7 +483,29 @@ dump_hotpath_logs() {
     fi
   done
 }
-trap 'status=$?; dump_hotpath_logs "$status"; exit "$status"' ERR
+failure_phase="runtime-probe"
+record_failure_phase() {
+  local phase="$1"
+  case "$phase" in
+    runtime-probe | hotpath-plugin-help | hotpath-plugin-install | hotpath-onboard | hotpath-channel-add | hotpath-doctor-fix | hotpath-doctor-check | telegram-live-runner)
+      ;;
+    *)
+      phase="unclassified"
+      ;;
+  esac
+  mkdir -p "$OPENCLAW_NPM_TELEGRAM_OUTPUT_DIR"
+  printf '%s\n' "$phase" > "$OPENCLAW_NPM_TELEGRAM_OUTPUT_DIR/failure-phase.txt"
+}
+handle_failure() {
+  local status=$?
+  trap - ERR
+  record_failure_phase "$failure_phase"
+  case "$failure_phase" in
+    hotpath-*) dump_hotpath_logs "$status" ;;
+  esac
+  exit "$status"
+}
+trap handle_failure ERR
 
 test -x "$sut_command"
 openclaw_e2e_run_command "$sut_command" --version
@@ -540,10 +575,17 @@ if [ "${OPENCLAW_NPM_TELEGRAM_SKIP_HOTPATH:-0}" != "1" ]; then
     hotpath_model_value="$OPENAI_API_KEY"
   fi
   hotpath_channel_value="$(printf '%s:%s' 123456 "$hotpath_placeholder")"
-  # Non-interactive onboarding cannot approve plugin capabilities. This release
-  # harness explicitly accepts the staged Codex artifact before testing setup.
-  openclaw_e2e_run_command "$sut_command" plugins install @openclaw/codex \
-    --accept-capabilities >/tmp/openclaw-npm-telegram-codex-install.log 2>&1 </dev/null
+  # Older packages own their automatic setup. Successful candidate help, not a
+  # version guess, establishes whether this harness must preinstall Codex.
+  failure_phase="hotpath-plugin-help"
+  plugin_install_help="$(openclaw_e2e_run_command "$sut_command" plugins install --help)"
+  fixture_consent="$(printf '%s' "$plugin_install_help" | node scripts/e2e/lib/package-compat.mjs fixture-consent)"
+  if [ -n "$fixture_consent" ]; then
+    failure_phase="hotpath-plugin-install"
+    openclaw_e2e_fixture_plugin_command "$sut_command" -- plugins install @openclaw/codex \
+      >/tmp/openclaw-npm-telegram-codex-install.log 2>&1 </dev/null
+  fi
+  failure_phase="hotpath-onboard"
   OPENAI_API_KEY="$hotpath_model_value" openclaw_e2e_run_command "$sut_command" onboard \
     --non-interactive --accept-risk \
     --mode local \
@@ -557,15 +599,19 @@ if [ "${OPENCLAW_NPM_TELEGRAM_SKIP_HOTPATH:-0}" != "1" ]; then
     --skip-health \
     --json >/tmp/openclaw-npm-telegram-onboard.json </dev/null
 
+  failure_phase="hotpath-channel-add"
   openclaw_e2e_run_command "$sut_command" channels add --channel telegram --token "$hotpath_channel_value" >/tmp/openclaw-npm-telegram-channel-add.log 2>&1 </dev/null
+  failure_phase="hotpath-doctor-fix"
   openclaw_e2e_run_command "$sut_command" doctor --fix --non-interactive >/tmp/openclaw-npm-telegram-doctor-fix.log 2>&1 </dev/null
+  failure_phase="hotpath-doctor-check"
   openclaw_e2e_run_command "$sut_command" doctor --non-interactive >/tmp/openclaw-npm-telegram-doctor-check.log 2>&1 </dev/null
   export HOME="$runtime_home"
 fi
 
 export OPENCLAW_NPM_TELEGRAM_SUT_COMMAND="$sut_command"
-trap - ERR
+failure_phase="telegram-live-runner"
 tsx scripts/e2e/npm-telegram-live-runner.ts
+trap - ERR
 EOF
 
 echo "package Telegram live Docker E2E passed ($PACKAGE_LABEL)"

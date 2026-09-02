@@ -152,8 +152,9 @@ describe("package Telegram live Docker E2E", () => {
     expect(script).toContain('*) OUTPUT_DIR_HOST="$ROOT_DIR/$OUTPUT_DIR" ;;');
     expect(script).toContain('mkdir -p "$OUTPUT_DIR_HOST"');
     expect(script).toContain(
-      'printf \'schema=1\\nexit_code=%s\\nlive_output=job_log\\n\' "$rc" > "$OUTPUT_DIR_HOST/run-metadata.txt"',
+      "printf 'schema=1\\nexit_code=%s\\nlive_output=job_log\\nfailure_phase=%s\\n'",
     );
+    expect(script).toContain('failure_phase="unclassified"');
     expect(script).toContain("trap cleanup EXIT");
     expect(dockerEnv).toContain(
       '-e OPENCLAW_NPM_TELEGRAM_OUTPUT_DIR="$OUTPUT_DIR_CONTAINER_RELATIVE"',
@@ -210,6 +211,53 @@ describe("package Telegram live Docker E2E", () => {
     expect(script).not.toContain('cp "$openclaw_package_dir/package.json" /app/package.json');
     expect(script).not.toContain("/app/node_modules/openclaw/package.json");
     expect(script).not.toContain("link_installed_package_dependency");
+  });
+
+  it("feature-detects capability consent before the onboarding hot path", () => {
+    const script = readFileSync(DOCKER_SCRIPT_PATH, "utf8");
+    const hotpathStart = script.indexOf(
+      'if [ "${OPENCLAW_NPM_TELEGRAM_SKIP_HOTPATH:-0}" != "1" ]; then',
+    );
+    const hotpathEnd = script.indexOf(
+      'export OPENCLAW_NPM_TELEGRAM_SUT_COMMAND="$sut_command"',
+      hotpathStart,
+    );
+    const hotpath = script.slice(hotpathStart, hotpathEnd);
+
+    expect(hotpathStart).toBeGreaterThanOrEqual(0);
+    expect(hotpathEnd).toBeGreaterThan(hotpathStart);
+    expect(hotpath).toContain(
+      'plugin_install_help="$(openclaw_e2e_run_command "$sut_command" plugins install --help)"',
+    );
+    expect(hotpath).toContain(
+      'fixture_consent="$(printf \'%s\' "$plugin_install_help" | node scripts/e2e/lib/package-compat.mjs fixture-consent)"',
+    );
+    expect(hotpath).toContain('if [ -n "$fixture_consent" ]; then');
+    expect(hotpath).toContain(
+      'openclaw_e2e_fixture_plugin_command "$sut_command" -- plugins install @openclaw/codex',
+    );
+    expect(hotpath).not.toMatch(/plugins install @openclaw\/codex \\\n\s+--accept-capabilities/u);
+  });
+
+  it("retains only allowlisted package Telegram failure phases", () => {
+    const script = readFileSync(DOCKER_SCRIPT_PATH, "utf8");
+
+    expect(script).toContain("set -Eeuo pipefail");
+    expect(script).toContain("trap handle_failure ERR");
+    for (const phase of [
+      "runtime-probe",
+      "hotpath-plugin-help",
+      "hotpath-plugin-install",
+      "hotpath-onboard",
+      "hotpath-channel-add",
+      "hotpath-doctor-fix",
+      "hotpath-doctor-check",
+      "telegram-live-runner",
+    ]) {
+      expect(script).toContain(phase);
+    }
+    expect(script).toContain('phase="unclassified"');
+    expect(script).toContain('failure_phase="none"');
   });
 
   it("adds private SDK exports only to the trusted harness manifest", () => {
