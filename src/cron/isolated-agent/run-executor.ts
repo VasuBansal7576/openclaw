@@ -645,7 +645,7 @@ function createCronPromptExecutor(
             async () => {
               const cliSessionBinding = params.cronSession.isNewSession
                 ? undefined
-                : getCliSessionBinding(params.cronSession.sessionEntry, executionProvider);
+                : await getCliSessionBinding(params.cronSession.sessionEntry, executionProvider);
               const guardedCliSessionBinding =
                 cliSessionBinding && hasCliSessionReuseMetadata(cliSessionBinding)
                   ? cliSessionBinding
