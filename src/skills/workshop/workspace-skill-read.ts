@@ -59,24 +59,14 @@ export function listWritableWorkspaceSkillSummaries(
     agentId: opts?.agentId,
   });
   const ownedDirs = listWorkshopOwnedSkillDirs(workspaceDir, opts?.env ? { env: opts.env } : {});
-  const summaries: WritableWorkspaceSkillSummary[] = [];
-  for (const skill of status.skills) {
-    if (!WRITABLE_WORKSPACE_SOURCES.has(skill.source)) {
-      continue;
-    }
-    const userAuthored = !ownedDirs.has(path.resolve(skill.baseDir));
-    summaries.push(
-      skill.description
-        ? {
-            name: skill.skillKey,
-            description: skill.description,
-            filePath: skill.filePath,
-            userAuthored,
-          }
-        : { name: skill.skillKey, filePath: skill.filePath, userAuthored },
-    );
-  }
-  return summaries;
+  return status.skills
+    .filter((skill) => WRITABLE_WORKSPACE_SOURCES.has(skill.source))
+    .map((skill) => ({
+      name: skill.name,
+      description: skill.description,
+      filePath: skill.filePath,
+      userAuthored: !ownedDirs.has(path.resolve(skill.baseDir)),
+    }));
 }
 
 /** Reads the live SKILL.md of a writable workspace skill, resolved like an update target. */
