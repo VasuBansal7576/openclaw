@@ -1435,6 +1435,49 @@ describe("loadPluginRegistrySnapshotWithMetadata", () => {
     ]);
   });
 
+  it.each(["plugin", "parent", "disabled"] as const)(
+    "respects %s source mounts after restarting with a persisted built registry",
+    (mount) => {
+      const tempRoot = makeTempDir();
+      const packageRoot = path.join(tempRoot, "openclaw");
+      const bundledRoot = path.join(packageRoot, "dist", "extensions");
+      const builtPluginDir = path.join(bundledRoot, "demo");
+      const sourceRoot = path.join(packageRoot, "extensions");
+      const sourcePluginDir = path.join(sourceRoot, "demo");
+      const stateDir = path.join(tempRoot, "state");
+      const workspaceDir = path.join(tempRoot, "workspace");
+      const env = {
+        OPENCLAW_BUNDLED_PLUGINS_DIR: bundledRoot,
+        OPENCLAW_STATE_DIR: stateDir,
+        OPENCLAW_VERSION: "2026.4.26",
+        VITEST: "true",
+        ...(mount === "disabled" ? { OPENCLAW_DISABLE_BUNDLED_SOURCE_OVERLAYS: "1" } : {}),
+      };
+      const config = { plugins: { entries: { demo: { enabled: true } } } };
+      writeBundledPlugin(builtPluginDir, "demo", "index.js");
+      writeBundledPlugin(sourcePluginDir, "demo", "index.ts");
+      const index = loadInstalledPluginIndex({ config, env, stateDir, workspaceDir });
+      expect(index.plugins.map((plugin) => plugin.rootDir)).toEqual([
+        fs.realpathSync(builtPluginDir),
+      ]);
+      writePersistedInstalledPluginIndexSync(index, { stateDir });
+      clearPluginMetadataLifecycleCaches();
+      mockLinuxMountInfo([mount === "parent" ? sourceRoot : sourcePluginDir]);
+
+      const result = loadPluginRegistrySnapshotWithMetadata({
+        config,
+        env,
+        stateDir,
+        workspaceDir,
+      });
+
+      expect(result.source).toBe(mount === "disabled" ? "persisted" : "derived");
+      expect(result.snapshot.plugins.map((plugin) => plugin.rootDir)).toEqual([
+        fs.realpathSync(mount === "disabled" ? builtPluginDir : sourcePluginDir),
+      ]);
+    },
+  );
+
   it("keeps a persisted bind-mounted source overlay when its built peer exists", () => {
     const tempRoot = makeTempDir();
     const packageRoot = path.join(tempRoot, "openclaw");

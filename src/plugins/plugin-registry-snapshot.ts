@@ -273,19 +273,25 @@ function hasMismatchedPersistedBundledRoot(
       );
     }
     if (isRealPathInside(bundledRoot, plugin.rootDir, realpathCache)) {
-      if (!sourceCheckout) {
-        return false;
-      }
-      const resolvedBundledRoot = safeRealpathSync(bundledRoot, realpathCache) ?? bundledRoot;
-      const resolvedPluginRoot = safeRealpathSync(plugin.rootDir, realpathCache) ?? plugin.rootDir;
-      const sourcePackage = tryReadJsonSync<PackageManifest>(
+      const sourcePluginRoot =
+        legacyRoot &&
         path.join(
           legacyRoot,
-          path.relative(resolvedBundledRoot, resolvedPluginRoot),
-          "package.json",
-        ),
+          path.relative(
+            safeRealpathSync(bundledRoot, realpathCache) ?? bundledRoot,
+            safeRealpathSync(plugin.rootDir, realpathCache) ?? plugin.rootDir,
+          ),
+        );
+      // A new mount replaces the bundled owner even when its cached build is unchanged.
+      return Boolean(
+        sourcePluginRoot &&
+        (overlays.some((root) => isRealPathInside(root, sourcePluginRoot, realpathCache)) ||
+          (sourceCheckout &&
+            getPackageManifestMetadata(
+              tryReadJsonSync<PackageManifest>(path.join(sourcePluginRoot, "package.json")) ??
+                undefined,
+            )?.build?.bundledDist === false)),
       );
-      return getPackageManifestMetadata(sourcePackage ?? undefined)?.build?.bundledDist === false;
     }
     return (
       !overlays.some((root) => isRealPathInside(root, plugin.rootDir, realpathCache)) &&

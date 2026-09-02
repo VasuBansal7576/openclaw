@@ -1,5 +1,6 @@
 /** Selects built plugin artifacts without importing active runtime state. */
 import path from "node:path";
+import { isBundledSourceOverlayPath } from "./bundled-source-overlays.js";
 import type { OpenClawPackageManifest } from "./manifest.js";
 import {
   isTypeScriptPackageEntry,
@@ -9,8 +10,34 @@ import { pluginCacheExistsSync, pluginCacheRealpathSync } from "./plugin-cache-f
 import { getPluginCacheRoot } from "./plugin-cache.js";
 import type { PluginOrigin } from "./plugin-origin.types.js";
 
-function rewriteBundledRuntimeArtifactRelativePath(relativePath: string): string {
-  return relativePath.replace(/\.[^.]+$/u, ".js");
+function isBundledSourceOverlayPluginRoot(rootDir: string): boolean {
+  const pluginRoot = path.resolve(rootDir);
+  return (
+    isBundledSourceOverlayPath({ sourcePath: pluginRoot }) ||
+    (path.basename(path.dirname(pluginRoot)) === "extensions" &&
+      isBundledSourceOverlayPath({ sourcePath: path.dirname(pluginRoot) }))
+  );
+}
+
+/** Lists root builds in caller order without replacing an active source overlay. */
+export function listBuiltBundledPluginRoots(
+  rootDir: string,
+  artifactRootNames: readonly ("dist" | "dist-runtime")[],
+): string[] {
+  const pluginRoot = path.resolve(rootDir);
+  const extensionsDir = path.dirname(pluginRoot);
+  const packageRoot = path.dirname(extensionsDir);
+  if (
+    path.basename(extensionsDir) !== "extensions" ||
+    path.basename(packageRoot) === "dist" ||
+    path.basename(packageRoot) === "dist-runtime" ||
+    isBundledSourceOverlayPluginRoot(pluginRoot)
+  ) {
+    return [];
+  }
+  return artifactRootNames.map((name) =>
+    path.join(packageRoot, name, "extensions", path.basename(pluginRoot)),
+  );
 }
 
 function resolvePackageLocalDistRuntimeArtifact(params: {
@@ -47,28 +74,17 @@ function resolvePreferredBundledRootArtifactFromCanonicalPaths(params: {
 }): { source: string; rootDir: string } {
   const { rootDir, source } = params;
   const sourceExternal = params.packageManifest?.build?.bundledDist === false;
-  const extensionsDir = path.dirname(rootDir);
-  if (path.basename(extensionsDir) !== "extensions") {
-    return { source, rootDir };
-  }
-  const packageRoot = path.dirname(extensionsDir);
-  if (path.basename(packageRoot) === "dist" || path.basename(packageRoot) === "dist-runtime") {
-    return { source, rootDir };
-  }
   const relativeSource = path.relative(rootDir, source);
   if (relativeSource === "" || relativeSource.startsWith("..") || path.isAbsolute(relativeSource)) {
     return { source, rootDir };
   }
-  const artifactRelativePath = rewriteBundledRuntimeArtifactRelativePath(relativeSource);
+  const artifactRelativePath = relativeSource.replace(/\.[^.]+$/u, ".js");
   // Source-external packaging can replace the flat root build while leaving its
   // staging wrapper behind, so only bundled artifacts may fall back to dist-runtime.
-  for (const artifactRootName of sourceExternal ? ["dist"] : ["dist-runtime", "dist"]) {
-    const artifactRoot = path.join(
-      packageRoot,
-      artifactRootName,
-      "extensions",
-      path.basename(rootDir),
-    );
+  for (const artifactRoot of listBuiltBundledPluginRoots(
+    rootDir,
+    sourceExternal ? ["dist"] : ["dist-runtime", "dist"],
+  )) {
     const artifactSource = path.join(artifactRoot, artifactRelativePath);
     if (pluginCacheExistsSync(artifactSource)) {
       return {
@@ -115,7 +131,10 @@ export function resolvePreferredBuiltRuntimeArtifact(params: {
 }): { source: string; rootDir: string } {
   // The stateful resolver canonicalizes both paths before memo-key construction.
   const { rootDir, source } = params;
-  if (!params.preferBuiltPluginArtifacts) {
+  if (
+    !params.preferBuiltPluginArtifacts ||
+    (params.origin === "bundled" && isBundledSourceOverlayPluginRoot(rootDir))
+  ) {
     return { source, rootDir };
   }
   if (params.origin !== "bundled") {
