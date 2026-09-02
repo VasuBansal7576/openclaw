@@ -892,7 +892,7 @@ For phone-number-based channels, consider running the assistant on a separate nu
 
 ## Secret scanning
 
-CI runs the in-repo `scripts/detect-private-keys.mts` scanner over every tracked file. If it fails, remove or rotate the committed key material, then reproduce locally:
+CI runs the in-repo `scripts/detect-private-keys.mts` scanner over every tracked regular file except colocated `*.test.ts` fixtures, the iOS Fastfile, and the scanner itself; pull requests run the base branch's copy of the scanner. If it fails, remove or rotate the committed key material, then reproduce locally:
 
 ```bash
 node scripts/detect-private-keys.mts

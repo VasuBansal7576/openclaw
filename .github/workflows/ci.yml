@@ -1779,26 +1779,47 @@ jobs:
           version: "3.97.0@sha256:ff4c95e9df7d645daf2140e3ca1039031c63106268d5fbb25feb43ceca1bcc33"
           extra_args: --results=verified,unknown --fail-on-scan-errors
 
-      - name: Prepare trusted pre-commit config
+      # Pull requests are scanned with the base-ref copies of these inputs so a
+      # candidate cannot weaken the guard it is scanned by; push and manual
+      # runs use the checked-out revision.
+      - name: Prepare trusted security inputs
         if: github.event_name == 'pull_request'
         env:
           BASE_SHA: ${{ steps.diff_base.outputs.sha }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -euo pipefail
-          trusted_config="$RUNNER_TEMP/pre-commit-base.yaml"
-          if git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null &&
-            git cat-file -e "${BASE_SHA}:.pre-commit-config.yaml" 2>/dev/null; then
-            git show "${BASE_SHA}:.pre-commit-config.yaml" > "$trusted_config"
-          elif git show "refs/remotes/origin/${BASE_REF}:.pre-commit-config.yaml" \
-            > "$trusted_config" 2>/dev/null; then
-            echo "Base SHA ${BASE_SHA} does not expose .pre-commit-config.yaml; using origin/${BASE_REF} instead."
-          else
-            echo "::warning title=trusted pre-commit config unavailable::Could not read .pre-commit-config.yaml from ${BASE_SHA} or origin/${BASE_REF}; falling back to the checked-out config."
-            rm -f "$trusted_config"
-            exit 0
-          fi
-          echo "PRE_COMMIT_CONFIG_PATH=$trusted_config" >> "$GITHUB_ENV"
+          select_trusted_input() {
+            local repo_path="$1" trusted_copy="$2" env_name="$3"
+            if git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null &&
+              git cat-file -e "${BASE_SHA}:${repo_path}" 2>/dev/null; then
+              git show "${BASE_SHA}:${repo_path}" > "$trusted_copy"
+            elif git show "refs/remotes/origin/${BASE_REF}:${repo_path}" \
+              > "$trusted_copy" 2>/dev/null; then
+              echo "Base SHA ${BASE_SHA} does not expose ${repo_path}; using origin/${BASE_REF} instead."
+            else
+              echo "::warning title=trusted ${repo_path} unavailable::Could not read ${repo_path} from ${BASE_SHA} or origin/${BASE_REF}; falling back to the checked-out copy."
+              rm -f "$trusted_copy"
+              return 0
+            fi
+            echo "${env_name}=${trusted_copy}" >> "$GITHUB_ENV"
+          }
+          select_trusted_input .pre-commit-config.yaml "$RUNNER_TEMP/pre-commit-base.yaml" PRE_COMMIT_CONFIG_PATH
+          select_trusted_input scripts/detect-private-keys.mts "$RUNNER_TEMP/detect-private-keys.mts" PRIVATE_KEY_SCANNER_PATH
+
+      - name: Setup Node.js
+        env:
+          REQUESTED_NODE_VERSION: "24.x"
+        run: |
+          set -euo pipefail
+          source .ci-harness/.github/actions/setup-pnpm-store-cache/ensure-node.sh
+          openclaw_ensure_node "$REQUESTED_NODE_VERSION"
+
+      # Runs before any pre-commit hook initialization: those hook-repo fetches
+      # failed on first-attempt runners, and this scan must not depend on
+      # network access or third-party hook code.
+      - name: Detect committed private keys
+        run: node "${PRIVATE_KEY_SCANNER_PATH:-scripts/detect-private-keys.mts}"
 
       - name: Resolve Python runtime
         id: setup-python
@@ -1841,19 +1862,6 @@ jobs:
 
           printf 'Auditing workflow files:\n%s\n' "${workflow_files[@]}"
           pre-commit run --config "${PRE_COMMIT_CONFIG_PATH:-.pre-commit-config.yaml}" zizmor --files "${workflow_files[@]}"
-
-      - name: Setup Node.js
-        env:
-          REQUESTED_NODE_VERSION: "24.x"
-        run: |
-          set -euo pipefail
-          source .ci-harness/.github/actions/setup-pnpm-store-cache/ensure-node.sh
-          openclaw_ensure_node "$REQUESTED_NODE_VERSION"
-
-      # In-repo scanner: no hook-repo fetches (first-attempt runners rejected
-      # anonymous git-over-HTTPS) and no third-party hook code under this token.
-      - name: Detect committed private keys
-        run: node scripts/detect-private-keys.mts
 
       - name: Audit production dependencies
         run: node scripts/pre-commit/pnpm-audit-prod.mjs --audit-level=high

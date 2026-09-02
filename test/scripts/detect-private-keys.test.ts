@@ -16,8 +16,8 @@ const SCRIPT_PATH = fileURLToPath(
   new URL("../../scripts/detect-private-keys.mts", import.meta.url),
 );
 
-function runScanner(cwd: string, args: string[] = []) {
-  return spawnSync(process.execPath, [SCRIPT_PATH, ...args], { cwd, encoding: "utf8" });
+function runScanner(cwd: string, args: string[] = [], scriptPath = SCRIPT_PATH) {
+  return spawnSync(process.execPath, [scriptPath, ...args], { cwd, encoding: "utf8" });
 }
 
 describe("detect-private-keys markers", () => {
@@ -74,8 +74,13 @@ describe("detect-private-keys CLI", () => {
       "leaked.pem": "-----BEGIN RSA PRIVATE KEY-----\nfixture only, no key material\n",
       "fixture.test.ts": "-----BEGIN EC PRIVATE KEY-----\n",
     });
+    // Pull-request CI runs a `git show` copy of the base-ref scanner from
+    // outside the candidate tree, so the file must work without siblings.
+    const standaloneCopy = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "dpk-copy-")), "s.mts");
+    fs.copyFileSync(SCRIPT_PATH, standaloneCopy);
 
-    const result = runScanner(cwd);
+    const result = runScanner(cwd, [], standaloneCopy);
+    fs.rmSync(path.dirname(standaloneCopy), { recursive: true, force: true });
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("Private key found: leaked.pem (BEGIN RSA PRIVATE KEY)");

@@ -4,11 +4,13 @@
 // checkout credentials are dropped, so it needs no network and executes no
 // third-party hook code. Marker set mirrors pre-commit-hooks v6.0.0
 // detect_private_key.py (byte substrings, not regexes) so local prek runs and
-// CI agree on what counts as a key.
+// CI agree on what counts as a key. Self-contained by contract: pull-request
+// CI extracts the base-ref copy with `git show` and runs it from outside the
+// candidate tree, so a relative import here would break that trusted path.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { isDirectRunUrl } from "./lib/direct-run.mjs";
+import { fileURLToPath } from "node:url";
 
 const TOOL_NAME = "detect-private-keys";
 
@@ -104,7 +106,16 @@ function main(argv: readonly string[]): number {
   return 1;
 }
 
-if (isDirectRunUrl(process.argv[1], import.meta.url)) {
+function isDirectRun(): boolean {
+  if (!process.argv[1]) {
+    return false;
+  }
+  const normalize = (value: string) =>
+    process.platform === "win32" ? path.resolve(value).toLowerCase() : path.resolve(value);
+  return normalize(process.argv[1]) === normalize(fileURLToPath(import.meta.url));
+}
+
+if (isDirectRun()) {
   let exitCode: number;
   try {
     exitCode = main(process.argv.slice(2));

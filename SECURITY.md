@@ -355,7 +355,7 @@ OpenClaw uses several security and release-validation layers. No single scanner 
 
 ### Secret Detection
 
-OpenClaw runs the in-repo `scripts/detect-private-keys.mts` scanner in CI (the same private-key marker set as the pre-commit-hooks `detect-private-key` hook, with no network or third-party hook execution) and keeps secret-resolution behavior covered by the dedicated secrets test surface.
+OpenClaw runs the in-repo `scripts/detect-private-keys.mts` scanner in CI (the same private-key marker set as the pre-commit-hooks `detect-private-key` hook, with no network or third-party hook execution) over every tracked regular file except colocated `*.test.ts` fixtures, the iOS Fastfile, and the scanner itself; pull requests run the base branch's copy of the scanner. Secret-resolution behavior stays covered by the dedicated secrets test surface.
 
 Run the key scan locally:
 

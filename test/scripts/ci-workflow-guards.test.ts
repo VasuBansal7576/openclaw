@@ -4518,6 +4518,88 @@ NODE
     );
   });
 
+  it("scans private keys with the base-ref scanner before any pre-commit hook runs", () => {
+    const securitySteps = readCiWorkflow().jobs["security-fast"].steps as WorkflowStep[];
+    const stepIndex = (name: string) => securitySteps.findIndex((step) => step.name === name);
+    const scanIndex = stepIndex("Detect committed private keys");
+    const scan = expectDefined(securitySteps[scanIndex], "private key scan");
+    expect(scan.run).toBe('node "${PRIVATE_KEY_SCANNER_PATH:-scripts/detect-private-keys.mts}"');
+    expect(stepIndex("Setup Node.js")).toBeLessThan(scanIndex);
+    const trusted = expectDefined(
+      securitySteps
+        .slice(0, scanIndex)
+        .find((step) => step.name === "Prepare trusted security inputs"),
+      "trusted security inputs",
+    );
+    expect(trusted.if).toBe("github.event_name == 'pull_request'");
+    // Hook-repo initialization is the network path this scan must never wait on.
+    const firstPreCommit = securitySteps.findIndex((step) =>
+      /pre-commit run|pip install/u.test(step.run ?? ""),
+    );
+    expect(firstPreCommit).toBeGreaterThan(scanIndex);
+
+    // A candidate that neuters the scanner while adding a key is still caught
+    // by the base-ref copy executed from RUNNER_TEMP.
+    const root = tempDirs.make("openclaw-security-scanner-");
+    const repo = path.join(root, "repo");
+    mkdirSync(path.join(repo, "scripts"), { recursive: true });
+    const git = (...args: string[]) =>
+      execFileSync(
+        "git",
+        ["-C", repo, "-c", "user.name=CI Fixture", "-c", "user.email=ci@example.invalid", ...args],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+      );
+    git("init", "-q");
+    const scannerPath = path.join(repo, "scripts", "detect-private-keys.mts");
+    writeFileSync(scannerPath, readFileSync(path.resolve("scripts/detect-private-keys.mts")));
+    writeFileSync(path.join(repo, ".pre-commit-config.yaml"), "repos: []\n");
+    git("add", "-A");
+    git("commit", "-q", "-m", "base");
+    const baseSha = git("rev-parse", "HEAD").trim();
+    writeFileSync(scannerPath, "process.exit(0);\n");
+    writeFileSync(path.join(repo, "leaked.pem"), "-----BEGIN RSA PRIVATE KEY-----\nfixture only\n");
+    git("add", "-A");
+    git("commit", "-q", "-m", "candidate");
+
+    const runnerTemp = path.join(root, "runner-temp");
+    mkdirSync(runnerTemp);
+    const envFile = path.join(root, "github-env");
+    writeFileSync(envFile, "");
+    const selected = spawnSync("bash", ["-e", "-c", expectDefined(trusted.run, "trusted run")], {
+      cwd: repo,
+      encoding: "utf8",
+      timeout: 10_000,
+      env: {
+        ...process.env,
+        BASE_SHA: baseSha,
+        BASE_REF: "main",
+        RUNNER_TEMP: runnerTemp,
+        GITHUB_ENV: envFile,
+      },
+    });
+    expect(selected.status, selected.stderr).toBe(0);
+    const exported = Object.fromEntries(
+      readFileSync(envFile, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => line.split("=")),
+    );
+    expect(exported).toEqual({
+      PRE_COMMIT_CONFIG_PATH: path.join(runnerTemp, "pre-commit-base.yaml"),
+      PRIVATE_KEY_SCANNER_PATH: path.join(runnerTemp, "detect-private-keys.mts"),
+    });
+
+    const scanned = spawnSync("bash", ["-e", "-c", expectDefined(scan.run, "scan run")], {
+      cwd: repo,
+      encoding: "utf8",
+      timeout: 30_000,
+      env: { ...process.env, ...exported },
+    });
+    expect(scanned.status).toBe(1);
+    expect(scanned.stderr).toContain("Private key found: leaked.pem (BEGIN RSA PRIVATE KEY)");
+    expect(scanned.stderr).toContain("[detect-private-keys] FAILED (exit 1)");
+  });
+
   it("scans only the pull request commit range for leaked credentials", () => {
     const securitySteps = readCiWorkflow().jobs["security-fast"].steps as WorkflowStep[];
     const checkoutIndex = securitySteps.findIndex((step) => step.name === "Checkout");
