@@ -133,7 +133,7 @@ export async function runCliFallbackCandidate(
     withLocalSessionPlacementTurnSettlement(
       {
         sessionId: turn.followupRun.run.sessionId,
-        sessionKey: turn.sessionKey,
+        sessionKey,
         agentId: turn.followupRun.run.agentId,
         runId: params.runId,
       },
@@ -289,7 +289,7 @@ export async function runCliFallbackCandidate(
           runParams: {
             preparedRunAdmission: params.preparedRunAdmission,
             sessionId: turn.followupRun.run.sessionId,
-            sessionKey: turn.sessionKey,
+            sessionKey,
             sessionTarget,
             sessionEntry,
             chatType:
@@ -421,6 +421,12 @@ export async function runCliFallbackCandidate(
           });
         }
         return candidateResult;
+      },
+      {
+        lifecycleGeneration: params.lifecycleGeneration,
+        abortSignal: params.runAbortSignal,
+        trigger: turn.isHeartbeat ? "heartbeat" : "user",
+        inputProvenance: turn.followupRun.run.inputProvenance,
       },
     ),
   );
