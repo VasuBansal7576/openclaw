@@ -1,19 +1,19 @@
 // Repairs canonical binding references after agent config migration.
 import { asNullableRecord, isRecord } from "@openclaw/normalization-core/record-coerce";
 import { AgentSelectionRequiredError, listAgentIds } from "../../../agents/agent-scope-config.js";
+import { resolveReadOnlyChannelPluginsForConfig } from "../../../channels/plugins/read-only.js";
 import { listRouteBindings } from "../../../config/bindings.js";
 import type { AgentRouteBinding } from "../../../config/types.agents.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
+import { resolveNormalizedAccountEntry } from "../../../routing/account-lookup.js";
 import { normalizeRouteBindingChannelId } from "../../../routing/binding-scope.js";
 import { resolveAgentRoute } from "../../../routing/resolve-route.js";
 import {
-  DEFAULT_ACCOUNT_ID,
   DEFAULT_AGENT_ID,
   normalizeAccountId,
   normalizeAgentId,
 } from "../../../routing/session-key.js";
 import type { DoctorConfigMutationResult } from "./config-mutation-state.js";
-import { listDoctorConfiguredChannelIds } from "./configured-channel-ids.js";
 
 export function pruneBindingsForMissingAgents(
   cfg: OpenClawConfig,
@@ -64,7 +64,9 @@ export function repairUnownedChannelAccountBindings(
   // Leave malformed binding input to config validation; it cannot establish an owner.
   if (
     agentIds.size < 2 ||
+    cfg.plugins?.enabled === false ||
     !Array.isArray(cfg.bindings) ||
+    cfg.bindings.length === 0 ||
     !cfg.bindings.every(
       (binding) =>
         isRecord(binding) &&
@@ -77,38 +79,27 @@ export function repairUnownedChannelAccountBindings(
     return { config: cfg, changes: [] };
   }
   const bindings = listRouteBindings(cfg);
-  const channelKeys = listDoctorConfiguredChannelIds(cfg, {
-    configEntryPolicy: "enabled",
-    sort: "codepoint",
+  const inventory = resolveReadOnlyChannelPluginsForConfig(cfg, {
+    includePersistedAuthState: false,
+    includeSetupFallbackPlugins: true,
   });
-  for (const channelKey of channelKeys) {
-    const channel = asNullableRecord(cfg.channels?.[channelKey]);
-    const channelId = normalizeRouteBindingChannelId(channelKey);
-    if (!channel || !channelId) {
+  const plugins = new Map(inventory.plugins.map((plugin) => [plugin.id, plugin]));
+  for (const channelId of [...inventory.configuredChannelIds].toSorted()) {
+    const plugin = plugins.get(channelId);
+    const channel = asNullableRecord(cfg.channels?.[channelId]);
+    if (!plugin || channel?.enabled === false) {
       continue;
     }
     const channelBindings = bindings.filter(
       (binding) => normalizeRouteBindingChannelId(binding.match.channel) === channelId,
     );
-    const accounts = new Map(
-      Object.entries(asNullableRecord(channel.accounts) ?? {}).map(([id, account]) => [
-        normalizeAccountId(id),
-        account,
-      ]),
-    );
-    if (
-      !accounts.has(DEFAULT_ACCOUNT_ID) &&
-      (accounts.size === 0 ||
-        channelBindings.some(
-          (binding) =>
-            binding.match.accountId?.trim() !== "*" &&
-            normalizeAccountId(binding.match.accountId) === DEFAULT_ACCOUNT_ID,
-        ))
-    ) {
-      accounts.set(DEFAULT_ACCOUNT_ID, {});
-    }
-    for (const accountId of [...accounts.keys()].toSorted()) {
-      if (asNullableRecord(accounts.get(accountId))?.enabled === false) {
+    const accounts = asNullableRecord(channel?.accounts) ?? undefined;
+    const accountIds = [
+      ...new Set(plugin.config.listAccountIds(cfg).map(normalizeAccountId)),
+    ].toSorted();
+    for (const accountId of accountIds) {
+      const account = resolveNormalizedAccountEntry(accounts, accountId, normalizeAccountId);
+      if (asNullableRecord(account)?.enabled === false) {
         continue;
       }
       try {

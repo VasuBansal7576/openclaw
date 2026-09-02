@@ -1,15 +1,25 @@
 // Doctor default-account integration tests cover binding warnings across realistic config shapes.
-import { afterEach, describe, expect, it } from "vitest";
-import { readConfigFileSnapshot, type OpenClawConfig } from "../config/config.js";
-import { withEnvOverride, withTempHome, writeOpenClawConfig } from "../config/test-helpers.js";
-import { runInitialConfigWriteHealth } from "../flows/doctor-health-contribution-runners.config.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createAccountListHelpers } from "../channels/plugins/account-helpers.js";
+import type { OpenClawConfig } from "../config/config.js";
 import { resolveAgentRoute } from "../routing/resolve-route.js";
-import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
-import { prepareDoctorContext } from "./doctor-config-flow.test-support.js";
 import {
   collectMissingDefaultAccountBindingWarnings,
   collectMissingExplicitDefaultAccountWarnings,
 } from "./doctor/shared/default-account-warnings.js";
+import { repairUnownedChannelAccountBindings } from "./doctor/shared/legacy-config-binding-repair.js";
+
+vi.mock("../channels/plugins/read-only.js", () => ({
+  resolveReadOnlyChannelPluginsForConfig: () => {
+    const { listAccountIds } = createAccountListHelpers("discord", {
+      implicitDefaultAccount: { channelKeys: ["token"], envVars: ["DISCORD_BOT_TOKEN"] },
+    });
+    return {
+      configuredChannelIds: ["discord"],
+      plugins: [{ id: "discord", config: { listAccountIds } }],
+    };
+  },
+}));
 
 describe("doctor missing default account binding warning", () => {
   it("warns when named accounts have no valid account-scoped bindings", () => {
@@ -67,7 +77,7 @@ describe("doctor missing default account binding warning", () => {
 });
 
 describe("doctor channel account ownership repair", () => {
-  afterEach(() => closeOpenClawStateDatabaseForTest());
+  afterEach(() => vi.unstubAllEnvs());
 
   it.each([
     {
@@ -85,6 +95,29 @@ describe("doctor channel account ownership repair", () => {
         { agentId: "research", match: { channel: "discord", accountId: "work" } },
       ],
       added: [{ agentId: "ops", match: { channel: "discord", accountId: "alerts" } }],
+    },
+    {
+      name: "environment-only default account alongside a named account",
+      envToken: true,
+      discord: { accounts: { alerts: {} } },
+      bindings: [
+        { agentId: "ops", match: { channel: "discord", accountId: "*", guildId: "guild-a" } },
+      ],
+      added: [
+        { agentId: "ops", match: { channel: "discord", accountId: "alerts" } },
+        { agentId: "ops", match: { channel: "discord", accountId: "default" } },
+      ],
+    },
+    {
+      name: "root-token default account alongside a named account",
+      discord: { token: "synthetic-discord-token", accounts: { alerts: {} } },
+      bindings: [
+        { agentId: "ops", match: { channel: "discord", accountId: "*", guildId: "guild-a" } },
+      ],
+      added: [
+        { agentId: "ops", match: { channel: "discord", accountId: "alerts" } },
+        { agentId: "ops", match: { channel: "discord", accountId: "default" } },
+      ],
     },
     {
       name: "narrow wildcard ownership without inventing a default account",
@@ -147,32 +180,30 @@ describe("doctor channel account ownership repair", () => {
     },
   ] satisfies Array<{
     name: string;
+    envToken?: boolean;
     discord: NonNullable<OpenClawConfig["channels"]>["discord"];
     bindings: NonNullable<OpenClawConfig["bindings"]>;
     added: NonNullable<OpenClawConfig["bindings"]>;
-  }>)("persists only proven ownership for $name", async ({ discord, bindings, added }) => {
-    await withTempHome(async (home) => {
-      await withEnvOverride({ OPENCLAW_DISABLE_BUNDLED_PLUGINS: "1" }, async () => {
-        const configPath = await writeOpenClawConfig(home, {
-          agents: { entries: { ops: {}, research: {} } },
-          channels: { discord },
-          bindings,
-          gateway: { mode: "local" },
-          plugins: { enabled: false },
-        });
-        const ctx = await prepareDoctorContext(configPath);
-        await runInitialConfigWriteHealth(ctx);
-        expect(ctx.configWriteRefusal).toBeUndefined();
-
-        const saved = await readConfigFileSnapshot();
-        expect(saved.config.bindings).toEqual([...bindings, ...added]);
-        for (const binding of added) {
-          expect(resolveAgentRoute({ cfg: saved.config, ...binding.match }).agentId).toBe(
-            binding.agentId,
-          );
-        }
-        expect((await prepareDoctorContext(configPath)).configResult.shouldWriteConfig).toBe(false);
-      });
-    });
+  }>)("repairs only proven ownership for $name", (testCase) => {
+    const { discord, bindings, added } = testCase;
+    vi.stubEnv(
+      "DISCORD_BOT_TOKEN",
+      "envToken" in testCase && testCase.envToken ? "synthetic-discord-token" : undefined,
+    );
+    const config: OpenClawConfig = {
+      agents: { ownership: "explicit", entries: { ops: {}, research: {} } },
+      channels: { discord },
+      bindings,
+    };
+    const repaired = repairUnownedChannelAccountBindings(config);
+    expect(repaired.config.bindings).toEqual([...bindings, ...added]);
+    for (const binding of added) {
+      expect(resolveAgentRoute({ cfg: repaired.config, ...binding.match }).agentId).toBe(
+        binding.agentId,
+      );
+    }
+    const secondPass = repairUnownedChannelAccountBindings(repaired.config);
+    expect(secondPass.config).toBe(repaired.config);
+    expect(secondPass.changes).toEqual([]);
   });
 });
