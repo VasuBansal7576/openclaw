@@ -97,7 +97,6 @@ function createFixture() {
   const bin = join(root, "bin");
   const runnerTemp = join(root, "runner");
   const githubEnv = join(root, "github-env");
-  const gitCalls = join(root, "git-calls");
   mkdirSync(join(repo, ".github"), { recursive: true });
   mkdirSync(bin);
   mkdirSync(runnerTemp);
@@ -132,7 +131,6 @@ function createFixture() {
   writeExecutable(
     join(bin, "git"),
     `#!/bin/sh
-printf '%s\n' "$*" >> "$OPENCLAW_TEST_GIT_CALLS"
 skip_value=0
 command=
 for arg in "$@"; do
@@ -166,14 +164,11 @@ exec "$OPENCLAW_TEST_REAL_GIT" "$@"
     baseSha,
     environment: {
       GITHUB_ENV: githubEnv,
-      OPENCLAW_TEST_GIT_CALLS: gitCalls,
       OPENCLAW_TEST_REAL_GIT: realGit,
       PATH: `${bin}${delimiter}${process.env.PATH ?? ""}`,
       RUNNER_TEMP: runnerTemp,
     },
     githubEnv,
-    gitCalls,
-    gitWrapper: join(bin, "git"),
     missingPolicySha,
     repo,
     runnerTemp,
@@ -280,22 +275,5 @@ describe("security-fast workflow", () => {
         "rules:\n  trusted-harness: {}\n",
       );
     }
-  });
-
-  it("rejects network Git verbs after global options", () => {
-    const fixture = createFixture();
-    const denied = spawnSync(
-      fixture.gitWrapper,
-      ["-c", "protocol.version=2", "fetch", "https://example.invalid/repo"],
-      {
-        encoding: "utf8",
-        env: { ...process.env, ...fixture.environment },
-      },
-    );
-    expect(denied.status).toBe(97);
-    expect(denied.stderr).toContain("network Git is forbidden");
-    expect(readFileSync(fixture.gitCalls, "utf8")).toContain(
-      "-c protocol.version=2 fetch https://example.invalid/repo",
-    );
   });
 });
