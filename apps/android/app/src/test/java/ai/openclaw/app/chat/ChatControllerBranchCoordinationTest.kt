@@ -468,14 +468,26 @@ class ChatControllerBranchCoordinationTest {
   fun cancellingRewindDoesNotStrandTheDurableMutationLease() =
     runTest {
       val gateway = ScriptedGateway(json)
+      val refreshStarted = CompletableDeferred<Job>()
+      val releaseRefresh = CompletableDeferred<String>()
+      gateway.respond("chat.history") {
+        refreshStarted.complete(requireNotNull(currentCoroutineContext()[Job]))
+        releaseRefresh.await()
+      }
+      gateway.respond("health") { error("health unavailable") }
       val rewindStarted = CompletableDeferred<Unit>()
       gateway.respond("sessions.rewind") {
         rewindStarted.complete(Unit)
         CompletableDeferred<Unit>().await()
         "{}"
       }
-      val controller = controller(gateway)
+      val controller = controller(gateway, StandardTestDispatcher(testScheduler))
+      runCurrent()
       controller.awaitOutboxRestore()
+      controller.handleGatewayEvent("health", null)
+      runCurrent()
+      controller.refresh()
+      val refreshJob = refreshStarted.await()
       val rewind = async { controller.rewindSessionAtEntryResult("main", "entry-a") }
       rewindStarted.await()
 
@@ -492,6 +504,18 @@ class ChatControllerBranchCoordinationTest {
       val state = outbox.branchState("gateway-a", ChatOutboxScope("main", "main"))
       assertTrue(state?.needsReconciliation == true)
       assertNull(state?.switchPendingSinceMs)
+      releaseRefresh.complete(historyResponse("stale-session", listOf(ReplayHistoryMessage("assistant", "stale", 1))))
+      refreshJob.join()
+      runCurrent()
+      assertEquals("Cancellation must happen before the rewind's history refresh", 1, gateway.callCount("chat.history"))
+      assertTrue(controller.messages.value.isEmpty())
+      assertTrue(outbox.load("gateway-a").isEmpty())
+      assertTrue(controller.healthOk.value)
+
+      controller.handleGatewayEvent("tick", null)
+      runCurrent()
+      assertEquals("Cancelled rewind must not strand Refresh's health check", 1, gateway.callCount("health"))
+      assertFalse(controller.healthOk.value)
     }
 
   @Test

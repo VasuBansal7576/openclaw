@@ -1,6 +1,7 @@
 package ai.openclaw.app.chat
 
 import ai.openclaw.app.gateway.GatewayRequestOutcomeUnknown
+import ai.openclaw.app.gateway.GatewayRequestRejected
 import ai.openclaw.app.gateway.GatewaySession
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -611,6 +612,106 @@ class ChatControllerReconnectRestoreTest {
       assertEquals(healthRequests + 1, gateway.callCount("health"))
       assertFalse(controller.healthOk.value)
     }
+
+  @Test
+  fun failedSupersedingHistoryDoesNotStrandPeriodicHealth() = runTest { verifyHealthAfterSupersedingHistoryEnds(cancelHistory = false) }
+
+  @Test
+  fun cancelledSupersedingHistoryDoesNotStrandPeriodicHealth() = runTest { verifyHealthAfterSupersedingHistoryEnds(cancelHistory = true) }
+
+  private suspend fun TestScope.verifyHealthAfterSupersedingHistoryEnds(cancelHistory: Boolean) {
+    val gateway = ScriptedGateway(json)
+    val releaseRefresh = CompletableDeferred<String>()
+    val releaseMutationHistory = CompletableDeferred<String>()
+    val mutationHistoryStarted = CompletableDeferred<Job>()
+    var historyRequests = 0
+    gateway.respond("chat.history") {
+      if (historyRequests++ == 0) {
+        releaseRefresh.await()
+      } else {
+        mutationHistoryStarted.complete(requireNotNull(currentCoroutineContext()[Job]))
+        releaseMutationHistory.await()
+      }
+    }
+    val controller = newScopedController(gateway)
+    controller.handleGatewayEvent("health", null)
+    runCurrent()
+    controller.handleGatewayEvent("tick", null)
+    runCurrent()
+    assertEquals(1, gateway.callCount("health"))
+    gateway.respond("health") { error("health unavailable") }
+    controller.refresh()
+    runCurrent()
+    assertEquals(1, gateway.callCount("chat.history"))
+
+    controller.handleGatewayEvent(
+      "sessions.changed",
+      """{"reason":"branch-switch","sessionKey":"main","agentId":"main"}""",
+    )
+    runCurrent()
+    val mutationHistoryJob = mutationHistoryStarted.await()
+    if (cancelHistory) {
+      mutationHistoryJob.cancelAndJoin()
+    } else {
+      releaseMutationHistory.completeExceptionally(
+        GatewayRequestRejected(GatewaySession.ErrorShape("UNAVAILABLE", "history unavailable")),
+      )
+      mutationHistoryJob.join()
+    }
+    releaseRefresh.complete(history(listOf(ReplayHistoryMessage("assistant", "superseded", 1))))
+    runCurrent()
+
+    assertEquals(2, gateway.callCount("chat.history"))
+    assertTrue(controller.messages.value.isEmpty())
+    assertTrue("History failure or cancellation is not a health result", controller.healthOk.value)
+    controller.handleGatewayEvent("tick", null)
+    runCurrent()
+
+    assertEquals("A finished history request must retain Refresh's forced health poll", 2, gateway.callCount("health"))
+    assertFalse(controller.healthOk.value)
+  }
+
+  @Test
+  fun failedOlderHistoryDoesNotReleaseHealthWhileSameGenerationHistoryIsPending() = runTest { verifyPendingSiblingHistoryHealth(olderFails = true) }
+
+  @Test
+  fun failedNewerHistoryKeepsOlderHistoryHealthGate() = runTest { verifyPendingSiblingHistoryHealth(olderFails = false) }
+
+  private fun TestScope.verifyPendingSiblingHistoryHealth(olderFails: Boolean) {
+    val gateway = ScriptedGateway(json)
+    val releaseRefresh = CompletableDeferred<String>()
+    val releaseTerminalHistory = CompletableDeferred<String>()
+    var historyRequests = 0
+    gateway.respond("chat.history") {
+      if (historyRequests++ == 0) releaseRefresh.await() else releaseTerminalHistory.await()
+    }
+    gateway.respondWith("sessions.branches.list", """{"branches":[]}""")
+    gateway.respond("health") { error("health unavailable") }
+    val controller = newScopedController(gateway)
+    controller.handleGatewayEvent("health", null)
+    runCurrent()
+    controller.refresh()
+    runCurrent()
+    controller.handleGatewayEvent("chat", chatTerminalPayload("main", "external-run", seq = 1, assistantText = "newer history"))
+    runCurrent()
+    assertEquals(2, gateway.callCount("chat.history"))
+
+    val failedHistory = if (olderFails) releaseRefresh else releaseTerminalHistory
+    val pendingHistory = if (olderFails) releaseTerminalHistory else releaseRefresh
+    failedHistory.completeExceptionally(IllegalStateException("history failed"))
+    runCurrent()
+    controller.handleGatewayEvent("tick", null)
+    runCurrent()
+
+    assertEquals("A failed request must not release its held sibling's health gate", 0, gateway.callCount("health"))
+    assertTrue(controller.healthOk.value)
+    pendingHistory.complete(history(listOf(ReplayHistoryMessage("assistant", "accepted history", 2))))
+    runCurrent()
+
+    assertEquals(listOf("accepted history"), controller.messageTexts)
+    assertEquals(1, gateway.callCount("health"))
+    assertFalse(controller.healthOk.value)
+  }
 
   @Test
   fun cancelledNewChatHealthRecoversWithoutManualRefresh() = runTest { verifyCancelledNewRecovery(holdHistory = false) }
