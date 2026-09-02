@@ -623,6 +623,123 @@ class ChatControllerBranchCoordinationTest {
   @Test
   fun dispatchGateSamePathAdvanceSendsOnce() = runTest { verifyDeferredBranchDispatch(DispatchGateLane.VisibleBacklog, branchSwitch = false) }
 
+  @Test
+  fun refreshHealthFailureSurvivesOutboxHistorySupersession() = runTest { verifyRefreshHealthAfterOutboxSupersession(healthAvailable = false) }
+
+  @Test
+  fun refreshHealthSuccessSurvivesOutboxHistorySupersession() = runTest { verifyRefreshHealthAfterOutboxSupersession(healthAvailable = true) }
+
+  private suspend fun TestScope.verifyRefreshHealthAfterOutboxSupersession(healthAvailable: Boolean) {
+    val key = "agent:main:refresh-proof"
+    val gateway = ScriptedGateway(json)
+    val healthy = AtomicBoolean(true)
+    val historyRequests = AtomicInteger()
+    val refreshStarted = CompletableDeferred<Job>()
+    val releaseRefresh = CompletableDeferred<Unit>()
+    val branchesStarted = CompletableDeferred<Job>()
+    val releaseBranches = CompletableDeferred<Unit>()
+    val sent = AtomicReference<JsonObject?>(null)
+    gateway.respond("health") {
+      check(healthy.get()) { "health unavailable; history transport remains connected" }
+      "{}"
+    }
+    gateway.respond("chat.history") {
+      val request = historyRequests.incrementAndGet()
+      val messages = mutableListOf(ReplayHistoryMessage("assistant", "A", 1, entryId = "A"))
+      if (request > 2) messages += ReplayHistoryMessage("assistant", "A2", 2, entryId = "A2")
+      sent.get()?.let { params ->
+        val id = params.getValue("idempotencyKey").jsonPrimitive.content
+        messages += ReplayHistoryMessage("user", "during refresh", 3, idempotencyKey = "$id:user", entryId = "input")
+        messages += ReplayHistoryMessage("assistant", "delivered", 4, entryId = "reply")
+      }
+      val response = historyResponse("refresh-proof", messages)
+      if (request == 2) {
+        refreshStarted.complete(requireNotNull(currentCoroutineContext()[Job]))
+        releaseRefresh.await()
+      }
+      response
+    }
+    gateway.respond("sessions.branches.list") {
+      if (historyRequests.get() > 1) {
+        branchesStarted.complete(requireNotNull(currentCoroutineContext()[Job]))
+        releaseBranches.await()
+      }
+      val leaf =
+        if (sent.get() != null) {
+          "reply"
+        } else if (historyRequests.get() > 2) {
+          "A2"
+        } else {
+          "A"
+        }
+      """{"branches":[{"leafEntryId":"$leaf","headline":"Current","messageCount":1,"active":true}]}"""
+    }
+    gateway.respond("chat.send") { paramsJson ->
+      val params = json.parseToJsonElement(requireNotNull(paramsJson)).jsonObject
+      sent.set(params)
+      val id = params.getValue("idempotencyKey").jsonPrimitive.content
+      """{"runId":"$id","status":"started"}"""
+    }
+    val controller = controller(gateway, StandardTestDispatcher(testScheduler))
+    runCurrent()
+    controller.awaitOutboxRestore()
+    controller.load(key)
+    awaitBranchProgress {
+      controller.healthOk.value && controller.sessionBranches.value
+        .singleOrNull()
+        ?.leafEntryId == "A"
+    }
+    val healthRequestsBeforeRefresh = gateway.callCount("health")
+    healthy.set(healthAvailable)
+    controller.refresh()
+    awaitBranchProgress { refreshStarted.isCompleted }
+
+    val attachment = OutgoingAttachment("image", "image/png", "proof.png", "AQIDBA==")
+    assertTrue(controller.sendMessageAwaitAcceptance("during refresh", "off", listOf(attachment)))
+    awaitBranchProgress { branchesStarted.isCompleted }
+    val admitted = outbox.load("gateway-a").single()
+    assertEquals(ChatOutboxStatus.Queued, admitted.status)
+    assertEquals(listOf("A", "A2"), controller.messages.value.map { it.content.single().text })
+
+    releaseRefresh.complete(Unit)
+    runCurrent()
+    assertEquals("Newer history must survive the late explicit refresh", listOf("A", "A2"), controller.messages.value.map { it.content.single().text })
+    assertEquals("No dispatch before authoritative branch evidence", 0, gateway.callCount("chat.send"))
+    assertEquals(admitted, outbox.load("gateway-a").single())
+    assertTrue(byteArrayOf(1, 2, 3, 4).contentEquals(outbox.loadAttachments(admitted.id).single().bytes))
+
+    releaseBranches.complete(Unit)
+    refreshStarted.await().join()
+    branchesStarted.await().join()
+    runCurrent()
+    assertEquals("Refresh must force health even when outbox reconciliation supplied history", healthRequestsBeforeRefresh + 1, gateway.callCount("health"))
+    assertEquals(healthAvailable, controller.healthOk.value)
+    if (healthAvailable) {
+      awaitBranchProgress {
+        outbox.load("gateway-a").isEmpty() && controller.messages.value
+          .lastOrNull()
+          ?.content
+          ?.singleOrNull()
+          ?.text == "delivered"
+      }
+      assertEquals(1, gateway.callCount("chat.send"))
+      val params = requireNotNull(sent.get())
+      assertEquals(admitted.id, params.getValue("idempotencyKey").jsonPrimitive.content)
+      assertEquals(key, params.getValue("sessionKey").jsonPrimitive.content)
+      assertEquals("during refresh", params.getValue("message").jsonPrimitive.content)
+      assertEquals(
+        attachment.base64,
+        params
+          .getValue("attachments")
+          .jsonArray
+          .single()
+          .jsonObject
+          .getValue("content")
+          .jsonPrimitive.content,
+      )
+    }
+  }
+
   private enum class DispatchGateLane { Refresh, RemoteEvent, Reconnect, VisibleBacklog, BackgroundBacklog }
 
   private suspend fun TestScope.verifyDeferredBranchDispatch(
