@@ -14,26 +14,28 @@ import { fileURLToPath } from "node:url";
 
 const TOOL_NAME = "detect-private-keys";
 
-export const PRIVATE_KEY_MARKERS = [
-  "BEGIN RSA PRIVATE KEY",
-  "BEGIN DSA PRIVATE KEY",
-  "BEGIN EC PRIVATE KEY",
-  "BEGIN OPENSSH PRIVATE KEY",
-  "BEGIN PRIVATE KEY",
-  "PuTTY-User-Key-File-2",
-  "BEGIN SSH2 ENCRYPTED PRIVATE KEY",
-  "BEGIN PGP PRIVATE KEY BLOCK",
-  "BEGIN ENCRYPTED PRIVATE KEY",
-  "BEGIN OpenVPN Static key V1",
-] as const;
+// Assembled at load time so this file never contains a literal marker: any
+// byte-substring scanner (this one, or the upstream hook that scans PRs) would
+// otherwise flag its own table, and a path carve-out for the scanner would
+// then be needed in every scanner config.
+const KEY = "PRIVATE KEY";
+export const PRIVATE_KEY_MARKERS: readonly string[] = [
+  `BEGIN RSA ${KEY}`,
+  `BEGIN DSA ${KEY}`,
+  `BEGIN EC ${KEY}`,
+  `BEGIN OPENSSH ${KEY}`,
+  `BEGIN ${KEY}`,
+  ["PuTTY-User-Key-File-", "2"].join(""),
+  `BEGIN SSH2 ENCRYPTED ${KEY}`,
+  `BEGIN PGP ${KEY} BLOCK`,
+  `BEGIN ENCRYPTED ${KEY}`,
+  ["BEGIN OpenVPN Static key V", "1"].join(""),
+];
 
-// Fixed here instead of read from the base-ref pre-commit config: on
-// pull_request the workflow, this scanner, and any config all come from the
-// same merge commit, so widening the exclude is a reviewable diff in the same
-// PR either way. Excluded: colocated test fixtures, the iOS Fastfile's
-// marker-bearing string, and this file's own marker table.
-export const PRIVATE_KEY_SCAN_EXCLUDE =
-  /(^|\/)(apps\/ios\/fastlane\/Fastfile$|scripts\/detect-private-keys\.mts$|.*\.test\.ts$)/;
+// Colocated test fixtures and the iOS Fastfile's marker-bearing string. The
+// list lives here, not in a config the scanner reads, so CI can run a
+// base-ref copy of this file and get the base-ref policy with it.
+export const PRIVATE_KEY_SCAN_EXCLUDE = /(^|\/)(apps\/ios\/fastlane\/Fastfile$|.*\.test\.ts$)/;
 
 const REGULAR_FILE_MODES = new Set(["100644", "100755"]);
 

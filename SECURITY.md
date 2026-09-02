@@ -355,12 +355,12 @@ OpenClaw uses several security and release-validation layers. No single scanner 
 
 ### Secret Detection
 
-OpenClaw's `detect-private-key` pre-commit hook runs the in-repo `scripts/detect-private-keys.mts` scanner (the same private-key marker set as the pre-commit-hooks hook, with no third-party hook code) over every tracked regular file except colocated `*.test.ts` fixtures, the iOS Fastfile, and the scanner itself. CI runs the same hook, and secret-resolution behavior stays covered by the dedicated secrets test surface.
+OpenClaw runs the pre-commit `detect-private-key` hook in CI and keeps secret-resolution behavior covered by the dedicated secrets test surface.
 
 Run the key scan locally:
 
 ```bash
-node scripts/detect-private-keys.mts
+pre-commit run --all-files detect-private-key
 ```
 
 ### Static Analysis

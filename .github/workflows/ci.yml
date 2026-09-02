@@ -1800,16 +1800,6 @@ jobs:
           fi
           echo "PRE_COMMIT_CONFIG_PATH=$trusted_config" >> "$GITHUB_ENV"
 
-      # Before pre-commit: the local detect-private-key hook runs a .mts
-      # scanner and needs this Node, not the runner image default.
-      - name: Setup Node.js
-        env:
-          REQUESTED_NODE_VERSION: "24.x"
-        run: |
-          set -euo pipefail
-          source .ci-harness/.github/actions/setup-pnpm-store-cache/ensure-node.sh
-          openclaw_ensure_node "$REQUESTED_NODE_VERSION"
-
       - name: Resolve Python runtime
         id: setup-python
         run: |
@@ -1854,6 +1844,14 @@ jobs:
 
           printf 'Auditing workflow files:\n%s\n' "${workflow_files[@]}"
           pre-commit run --config "${PRE_COMMIT_CONFIG_PATH:-.pre-commit-config.yaml}" zizmor --files "${workflow_files[@]}"
+
+      - name: Setup Node.js
+        env:
+          REQUESTED_NODE_VERSION: "24.x"
+        run: |
+          set -euo pipefail
+          source .ci-harness/.github/actions/setup-pnpm-store-cache/ensure-node.sh
+          openclaw_ensure_node "$REQUESTED_NODE_VERSION"
 
       - name: Audit production dependencies
         run: node scripts/pre-commit/pnpm-audit-prod.mjs --audit-level=high

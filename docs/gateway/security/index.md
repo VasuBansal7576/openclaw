@@ -892,10 +892,10 @@ For phone-number-based channels, consider running the assistant on a separate nu
 
 ## Secret scanning
 
-CI runs the `detect-private-key` pre-commit hook, which executes the in-repo `scripts/detect-private-keys.mts` scanner over every tracked regular file except colocated `*.test.ts` fixtures, the iOS Fastfile, and the scanner itself. If it fails, remove or rotate the committed key material, then reproduce locally:
+CI runs the pre-commit `detect-private-key` hook over the repository. If it fails, remove or rotate the committed key material, then reproduce locally:
 
 ```bash
-node scripts/detect-private-keys.mts
+pre-commit run --all-files detect-private-key
 ```
 
 ## Reporting security issues
