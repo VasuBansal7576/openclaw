@@ -191,6 +191,11 @@ const port = Number(argv[argv.indexOf("--port") + 1]);
 const env = Object.fromEntries(["HOME", "OPENCLAW_CONFIG_PATH", "OPENCLAW_GATEWAY_TOKEN", "OPENCLAW_STATE_DIR"].map((key) => [key, process.env[key]]));
 appendFileSync(tracePath, JSON.stringify({ argv, config: JSON.parse(readFileSync(process.env.OPENCLAW_CONFIG_PATH, "utf8")), cwd: process.cwd(), env, pid: process.pid, port }) + "\\n");
 const kind = (process.env.OPENCLAW_FAKE_GATEWAY_SEQUENCE || "ready").split(",")[attempt - 1] || "ready";
+if (kind === "cli-json") {
+  const payload = { plugins: [{ id: "fixture", description: "x".repeat(Number(argv[0])) }] };
+  await new Promise((resolve) => process.stdout.write(JSON.stringify(payload), resolve));
+  process.exit(0);
+}
 process.stdout.write("fake gateway attempt " + attempt + "\\n");
 if (kind === "cli") {
   process.stderr.write("cli diagnostic\\n");
@@ -294,6 +299,31 @@ function createGatewayProcessState(
 }
 
 describe("openclaw test instance", () => {
+  it.each([
+    { bytes: 300 * 1024, overflow: false },
+    { bytes: 2 * 1024 * 1024, overflow: true },
+  ])(
+    "preserves complete CLI JSON or fails overflow ($bytes bytes)",
+    async ({ bytes, overflow }) => {
+      const { instance, readAttempts } = await createFakeGateway("cli-json");
+      const command = trackOperation(instance.cli([String(bytes)]));
+      if (overflow) {
+        await expect(command).rejects.toMatchObject({ code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" });
+      } else {
+        const result = await command;
+        expect(result.code).toBe(0);
+        expect(result.signal).toBeNull();
+        expect(result.stderr).toBe("");
+        expect(JSON.parse(result.stdout)).toEqual({
+          plugins: [{ id: "fixture", description: "x".repeat(bytes) }],
+        });
+      }
+      const attempts = await readAttempts();
+      expect(attempts).toHaveLength(1);
+      expect(isProcessAlive(attempts[0]!.pid)).toBe(false);
+    },
+  );
+
   it.each([
     { mode: "0", prepare: false },
     { mode: "7", prepare: false },
@@ -1091,24 +1121,6 @@ describe("openclaw test instance", () => {
 
     expect(fetchImpl).toHaveBeenCalledOnce();
     expect(Date.now() - startedAt).toBeLessThan(500);
-  });
-
-  it("signals test instance process groups on POSIX", () => {
-    const child = {
-      pid: 1234,
-      kill: vi.fn(() => true),
-    };
-    const killProcess = vi.fn(() => true);
-
-    testing.signalOpenClawTestProcess(child, "SIGKILL", killProcess);
-
-    if (process.platform === "win32") {
-      expect(killProcess).not.toHaveBeenCalled();
-      expect(child.kill).toHaveBeenCalledWith("SIGKILL");
-    } else {
-      expect(killProcess).toHaveBeenCalledWith(-1234, "SIGKILL");
-      expect(child.kill).not.toHaveBeenCalled();
-    }
   });
 
   it("creates isolated config and spawn env without mutating process env", async () => {
