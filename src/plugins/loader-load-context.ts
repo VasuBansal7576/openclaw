@@ -58,17 +58,19 @@ function buildActivationMetadataHash(params: {
   activationSource: PluginActivationConfigSource;
   autoEnabledReasons: Readonly<Record<string, string[]>>;
 }): string {
-  const enabledSourceChannels = Object.entries(
+  // Both sides of channels.<id>.enabled steer activation, so an added or flipped
+  // flag must miss the cache instead of reusing a registry built without it.
+  const sourceChannelEnablement = Object.entries(
     (params.activationSource.rootConfig?.channels as Record<string, unknown>) ?? {},
   )
-    .filter(([, value]) => {
+    .flatMap(([channelId, value]) => {
       if (!value || typeof value !== "object" || Array.isArray(value)) {
-        return false;
+        return [];
       }
-      return (value as { enabled?: unknown }).enabled === true;
+      const enabled = (value as { enabled?: unknown }).enabled;
+      return typeof enabled === "boolean" ? [[channelId, enabled] as const] : [];
     })
-    .map(([channelId]) => channelId)
-    .toSorted((left, right) => left.localeCompare(right));
+    .toSorted(([left], [right]) => left.localeCompare(right));
   // Source config selects validation and defaults even when resolved values match.
   // Object fields keep an absent config distinct from an explicit null source.
   const pluginEntryInputs = Object.entries(params.activationSource.plugins.entries)
@@ -86,7 +88,7 @@ function buildActivationMetadataHash(params: {
         deny: params.activationSource.plugins.deny,
         memorySlot: params.activationSource.plugins.slots.memory,
         entries: pluginEntryInputs,
-        enabledChannels: enabledSourceChannels,
+        channelEnablement: sourceChannelEnablement,
         autoEnabledReasons: autoEnableReasonEntries,
       }),
     )
