@@ -228,6 +228,7 @@ describeControlUiE2e("Control UI Markdown table interactions", () => {
     page.setDefaultTimeout(15_000);
     const gateway = await installMockGateway(page, {
       sessionKey: sourceKey,
+      featureMethods: ["chat.metadata", "chat.startup", "progressCard.get"],
       sessions: [
         { key: sourceKey, label: "Table links" },
         { key: targetKey, label: "Linked task" },
@@ -262,6 +263,7 @@ describeControlUiE2e("Control UI Markdown table interactions", () => {
         },
       },
       methodResponses: {
+        "progressCard.get": { card: null },
         "sessions.files.get": {
           root: "/workspace",
           sessionKey: sourceKey,
@@ -311,6 +313,62 @@ describeControlUiE2e("Control UI Markdown table interactions", () => {
       await shell.getByRole("button", { name: "Expand table" }).click();
       const dialog = page.locator(".markdown-table-dialog");
       await dialog.waitFor({ state: "visible" });
+      if (link === "session") {
+        const sessionLink = dialog.locator(selector);
+        const close = dialog.getByRole("button", { name: "Close expanded table" });
+        await sessionLink.focus();
+        await page.keyboard.press("Tab");
+        await expect
+          .poll(() => close.evaluate((element) => element === document.activeElement))
+          .toBe(true);
+        await page.keyboard.press("Shift+Tab");
+        await expect
+          .poll(() => sessionLink.evaluate((element) => element === document.activeElement))
+          .toBe(true);
+        if (captureProof) {
+          await page.screenshot({ path: path.join(artifactDir, "tab-cycle.png") });
+        }
+        await gateway.setMethodResponse("progressCard.get", {
+          card: {
+            markdown: "[Open build log](https://example.com/build)",
+            revision: 1,
+            sessionKey: targetKey,
+            updatedAt: 1,
+          },
+        });
+        await gateway.emitGatewayEvent("progressCard.changed", {
+          revision: 1,
+          sessionKey: targetKey,
+        });
+        const progressLink = page
+          .locator(".session-progress-hovercard")
+          .getByRole("link", { name: "Open build log" });
+        await progressLink.waitFor({ state: "visible" });
+        if (captureProof) {
+          await page.screenshot({ path: path.join(artifactDir, "progress-before-tab.png") });
+        }
+        await page.keyboard.press("Tab");
+        await expect
+          .poll(() => page.locator(".session-progress-hovercard a:focus").count())
+          .toBe(1);
+        expect(await dialog.isVisible()).toBe(true);
+        if (captureProof) {
+          await page.screenshot({ path: path.join(artifactDir, "progress-after-tab.png") });
+        }
+        await page.keyboard.press("Shift+Tab");
+        await expect
+          .poll(() => sessionLink.evaluate((element) => element === document.activeElement))
+          .toBe(true);
+        const popupPromise = context.waitForEvent("page");
+        await sessionLink.click({ modifiers: ["ControlOrMeta"] });
+        const popup = await popupPromise;
+        await expect.poll(() => popup.url()).toBe(controlUiSessionUrl(server.baseUrl, targetKey));
+        await popup.close();
+        expect(page.url()).toBe(controlUiSessionUrl(server.baseUrl, sourceKey));
+        await dialog.waitFor({ state: "detached" });
+        await shell.getByRole("button", { name: "Expand table" }).click();
+        await dialog.waitFor({ state: "visible" });
+      }
       if (captureProof) {
         await page.screenshot({ path: path.join(artifactDir, "expanded-before-action.png") });
       }

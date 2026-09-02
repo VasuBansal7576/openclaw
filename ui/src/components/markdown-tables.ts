@@ -146,6 +146,9 @@ async function showTableDialog(
   dialog.setReturnFocusTarget(trigger);
   const close = () => dialog.remove();
   const dismissLink = (event: Event) => {
+    if (event instanceof KeyboardEvent && event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
     if (anchorFromNavigationEvent(event)) {
       // Listener microtasks can run before ancestor handlers. Wait for the
       // transcript's keyboard activation decision before dismissing the overlay.
