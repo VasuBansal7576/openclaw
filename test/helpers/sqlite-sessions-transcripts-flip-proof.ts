@@ -169,7 +169,9 @@ export async function runSqliteSessionsTranscriptsFlipProof(options: RunOptions 
             plugin.origin !== "bundled" ||
             typeof plugin.source !== "string"
           ) {
-            throw new Error("built CLI could not inspect the bundled OpenAI artifact");
+            throw new Error(
+              `built CLI could not inspect the bundled OpenAI artifact (code=${String(inspection.code)} signal=${String(inspection.signal)})\nstdout: ${tail(inspection.stdout)}\nstderr: ${tail(inspection.stderr)}`,
+            );
           }
           bundledPlugins = [{ id: plugin.id, source: plugin.source }];
         }

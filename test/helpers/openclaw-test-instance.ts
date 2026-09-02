@@ -79,6 +79,8 @@ const GATEWAY_STOP_TIMEOUT_MS = 1_500;
 const GATEWAY_ENTRYPOINT_PREPARE_TIMEOUT_MS = 120_000;
 const COMMAND_TIMEOUT_MS = 30_000;
 const LOG_TAIL_MAX_BYTES = 256 * 1024;
+// CLI stdout carries structured inventories, with a separate bound from diagnostic tails.
+const COMMAND_STDOUT_MAX_BYTES = 1024 * 1024;
 const GATEWAY_MIGRATION_CONVERGENCE_MAX_RESTARTS = 1;
 const GATEWAY_MIGRATION_CONVERGENCE_REFUSAL_PREFIX =
   "OpenClaw plugin migration inputs changed during startup convergence;";
@@ -87,6 +89,7 @@ const GATEWAY_MIGRATION_CONVERGENCE_RESTART_MARKER =
 const entrypointPromises = new Map<string, Promise<string[]>>();
 
 type BoundedStringLog = string[] & {
+  maxBytes?: number;
   byteLength?: number;
   truncated?: boolean;
 };
@@ -99,19 +102,20 @@ type GatewayProcessStopOptions = NonNullable<Parameters<typeof terminateManagedC
   forceWindowsTree?: boolean;
 };
 
-function createBoundedStringLog(): string[] {
+function createBoundedStringLog(maxBytes = LOG_TAIL_MAX_BYTES): string[] {
   const log = [] as BoundedStringLog;
+  log.maxBytes = Math.max(1, maxBytes);
   log.byteLength = 0;
   log.truncated = false;
   return log;
 }
 
-function appendLogChunk(log: string[], chunk: unknown, maxBytes = LOG_TAIL_MAX_BYTES): void {
+function appendLogChunk(log: string[], chunk: unknown): void {
   const chunks = log as BoundedStringLog;
-  const limit = Math.max(1, maxBytes);
+  const limit = chunks.maxBytes ?? LOG_TAIL_MAX_BYTES;
   const text = String(chunk);
   const textBytes = Buffer.byteLength(text);
-  if (textBytes >= limit) {
+  if (textBytes > limit) {
     const buffer = Buffer.from(text);
     const tail = decodeUtf8Tail(buffer.subarray(buffer.length - limit));
     chunks.splice(0, chunks.length, tail);
@@ -145,7 +149,7 @@ function appendLogChunk(log: string[], chunk: unknown, maxBytes = LOG_TAIL_MAX_B
 function readLogBuffer(log: string[]): string {
   const text = log.join("");
   return (log as BoundedStringLog).truncated
-    ? `[output truncated to last ${LOG_TAIL_MAX_BYTES} bytes]\n${text}`
+    ? `[output truncated to last ${(log as BoundedStringLog).maxBytes ?? LOG_TAIL_MAX_BYTES} bytes]\n${text}`
     : text;
 }
 
@@ -709,7 +713,7 @@ async function runCommand(params: {
   if (!command) {
     throw new Error("missing command");
   }
-  const stdout = createBoundedStringLog();
+  const stdout = createBoundedStringLog(COMMAND_STDOUT_MAX_BYTES);
   const stderr = createBoundedStringLog();
   let child!: ChildProcess;
   try {

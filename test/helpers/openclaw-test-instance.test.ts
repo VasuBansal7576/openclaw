@@ -212,6 +212,10 @@ const port = Number(argv[argv.indexOf("--port") + 1]);
 const env = Object.fromEntries(["HOME", "OPENCLAW_CONFIG_PATH", "OPENCLAW_GATEWAY_TOKEN", "OPENCLAW_STATE_DIR"].map((key) => [key, process.env[key]]));
 appendFileSync(tracePath, JSON.stringify({ argv, config: JSON.parse(readFileSync(process.env.OPENCLAW_CONFIG_PATH, "utf8")), cwd: process.cwd(), env, pid: process.pid, port }) + "\\n");
 const kind = (process.env.OPENCLAW_FAKE_GATEWAY_SEQUENCE || "ready").split(",")[attempt - 1] || "ready";
+if (kind === "cli" && argv[0] === "json") {
+  await new Promise((resolve) => process.stdout.write(JSON.stringify({ payload: "x".repeat(Number(argv[1])) }), resolve));
+  process.exit(0);
+}
 process.stdout.write("fake gateway attempt " + attempt + "\\n");
 if (kind === "cli") {
   process.stderr.write("cli diagnostic\\n");
@@ -376,6 +380,19 @@ describe("openclaw test instance", () => {
         clearTimeout(timer);
       }
     }
+  });
+
+  it("captures large structured CLI output and bounds oversized results", async () => {
+    const { instance } = await createFakeGateway("cli,cli");
+    const complete = await trackOperation(instance.cli(["json", String(300 * 1024)]));
+    expect(complete.code).toBe(0);
+    expect(JSON.parse(complete.stdout)).toEqual({ payload: "x".repeat(300 * 1024) });
+
+    const oversized = await trackOperation(instance.cli(["json", String(2 * 1024 * 1024)]));
+    expect(oversized.code).toBe(0);
+    expect(oversized.stdout).toMatch(/^\[output truncated to last 1048576 bytes\]\n/);
+    expect(Buffer.byteLength(oversized.stdout)).toBeLessThanOrEqual(1024 * 1024 + 64);
+    expect(oversized.stdout.endsWith('"}')).toBe(true);
   });
 
   it("captures CLI stderr written after the process exits", async () => {
@@ -1164,20 +1181,24 @@ describe("openclaw test instance", () => {
   });
 
   it("keeps only bounded child output tails in helper logs", () => {
-    const stdout = testing.createBoundedStringLog();
-    const stderr = testing.createBoundedStringLog();
+    const stdout = testing.createBoundedStringLog(32);
+    const stderr = testing.createBoundedStringLog(32);
 
-    testing.appendLogChunk(stdout, `old stdout ${"x".repeat(64)}\n`, 32);
-    testing.appendLogChunk(stdout, "recent stdout\n", 32);
-    testing.appendLogChunk(stderr, `old stderr ${"y".repeat(64)}\n`, 32);
-    testing.appendLogChunk(stderr, "recent stderr\n", 32);
+    testing.appendLogChunk(stdout, `old stdout ${"x".repeat(64)}\n`);
+    testing.appendLogChunk(stdout, "recent stdout\n");
+    testing.appendLogChunk(stderr, `old stderr ${"y".repeat(64)}\n`);
+    testing.appendLogChunk(stderr, "recent stderr\n");
 
     const logs = testing.formatLogs(stdout, stderr);
-    expect(logs).toContain("[output truncated to last");
+    expect(logs).toContain("[output truncated to last 32 bytes]");
     expect(logs).toContain("recent stdout");
     expect(logs).toContain("recent stderr");
     expect(logs).not.toContain("old stdout");
     expect(logs).not.toContain("old stderr");
+
+    const exact = testing.createBoundedStringLog(32);
+    testing.appendLogChunk(exact, "x".repeat(32));
+    expect(testing.formatLogs(exact, [])).not.toContain("output truncated");
   });
 
   it("terminates UTF-8 log trimming within the byte cap", { timeout: 15_000 }, async () => {
@@ -1198,9 +1219,9 @@ describe("openclaw test instance", () => {
       import { testing } from ${JSON.stringify(new URL("./openclaw-test-instance.ts", import.meta.url).href)};
       process.stderr.write("loaded actual log helper; starting UTF-8 cases\\n");
       for (const { chunks, limit, expected } of JSON.parse(process.argv[1])) {
-        const log = testing.createBoundedStringLog();
+        const log = testing.createBoundedStringLog(limit);
         for (const chunk of chunks) {
-          testing.appendLogChunk(log, chunk, limit);
+          testing.appendLogChunk(log, chunk);
           assert.ok(Buffer.byteLength(log.join("")) <= limit);
         }
         assert.equal(log.join(""), expected);
