@@ -36,7 +36,7 @@ describeControlUiE2e("Control UI Markdown table interactions", () => {
     if (!chromiumAvailable) {
       throw new Error(`Playwright Chromium is unavailable at ${chromiumExecutablePath}`);
     }
-    server = await startControlUiE2eServer(undefined, { source: true });
+    server = await startControlUiE2eServer();
     browser = await chromium.launch({ executablePath: chromiumExecutablePath });
   });
 
