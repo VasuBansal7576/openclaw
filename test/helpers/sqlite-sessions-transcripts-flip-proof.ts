@@ -163,7 +163,9 @@ export async function runSqliteSessionsTranscriptsFlipProof(options: RunOptions 
           const inventory = await inst.cli(["plugins", "list", "--json"]);
           const plugins = parseJsonObject(inventory.stdout)?.plugins;
           if (inventory.code !== 0 || !Array.isArray(plugins)) {
-            throw new Error("built CLI could not list bundled plugin artifacts");
+            throw new Error(
+              `built CLI could not list bundled plugin artifacts (exit ${inventory.code}, signal ${inventory.signal}, stdout ${Buffer.byteLength(inventory.stdout)} bytes)\n${inventory.stderr}`,
+            );
           }
           bundledPlugins = plugins.flatMap((value) => {
             const plugin = asRecord(value);

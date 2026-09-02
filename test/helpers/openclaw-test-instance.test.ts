@@ -977,6 +977,40 @@ describe("openclaw test instance", () => {
     expect(logs).not.toContain("old stderr");
   });
 
+  it("returns complete command stdout beyond the diagnostic log tail", async () => {
+    // `plugins list --json` on a full bundled inventory exceeds the 256 KiB log
+    // tail; a tail-only capture used to hand callers unparsable JSON.
+    const bytes = 400 * 1024;
+    const result = await testing.runCommand({
+      args: [
+        process.execPath,
+        "-e",
+        `process.stdout.write(JSON.stringify({ pad: "x".repeat(${bytes}) }))`,
+      ],
+      cwd: process.cwd(),
+      env: process.env,
+      timeoutMs: 20_000,
+    });
+    expect(result.code).toBe(0);
+    expect(result.stdout).not.toContain("[output truncated");
+    expect(JSON.parse(result.stdout)).toEqual({ pad: "x".repeat(bytes) });
+  });
+
+  it("fails loudly when command stdout overflows the capture cap", async () => {
+    await expect(
+      testing.runCommand({
+        args: [
+          process.execPath,
+          "-e",
+          'const chunk = "y".repeat(1024 * 1024); for (let i = 0; i < 17; i += 1) process.stdout.write(chunk);',
+        ],
+        cwd: process.cwd(),
+        env: process.env,
+        timeoutMs: 30_000,
+      }),
+    ).rejects.toThrow(/command stdout exceeded \d+ bytes/u);
+  });
+
   it("terminates UTF-8 log trimming within the byte cap", { timeout: 15_000 }, async () => {
     const cases = [
       { chunks: ["€a", "b"], limit: 4, expected: "ab" },

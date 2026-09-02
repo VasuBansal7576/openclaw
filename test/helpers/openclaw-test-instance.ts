@@ -73,6 +73,10 @@ const GATEWAY_STOP_TIMEOUT_MS = 1_500;
 const GATEWAY_ENTRYPOINT_PREPARE_TIMEOUT_MS = 120_000;
 const COMMAND_TIMEOUT_MS = 30_000;
 const LOG_TAIL_MAX_BYTES = 256 * 1024;
+// Command stdout is a result callers parse (for example `plugins list --json`),
+// not a diagnostic tail: silently keeping only the last bytes corrupts JSON.
+// Overflow fails loudly instead. Stderr keeps the ordinary bounded tail.
+const COMMAND_STDOUT_MAX_BYTES = 16 * 1024 * 1024;
 const GATEWAY_MIGRATION_CONVERGENCE_MAX_RESTARTS = 1;
 const GATEWAY_MIGRATION_CONVERGENCE_REFUSAL_PREFIX =
   "OpenClaw plugin migration inputs changed during startup convergence;";
@@ -678,7 +682,7 @@ async function runCommand(params: {
   });
   child.stdout?.setEncoding("utf8");
   child.stderr?.setEncoding("utf8");
-  child.stdout?.on("data", (d) => appendLogChunk(stdout, d));
+  child.stdout?.on("data", (d) => appendLogChunk(stdout, d, COMMAND_STDOUT_MAX_BYTES));
   child.stderr?.on("data", (d) => appendLogChunk(stderr, d));
 
   const deadline = new AbortController();
@@ -694,6 +698,11 @@ async function runCommand(params: {
     await waitForGatewayClose(child, GATEWAY_STOP_TIMEOUT_MS);
     throw new Error(
       `command timed out after ${params.timeoutMs}ms: ${params.args.join(" ")}\n${formatLogs(stdout, stderr)}`,
+    );
+  }
+  if ((stdout as BoundedStringLog).truncated) {
+    throw new Error(
+      `command stdout exceeded ${COMMAND_STDOUT_MAX_BYTES} bytes: ${params.args.join(" ")}`,
     );
   }
   return {
@@ -729,6 +738,7 @@ export const testing = {
   createBoundedStringLog,
   formatLogs,
   isGatewayMigrationConvergenceRefusal,
+  runCommand,
   signalOpenClawTestProcess,
   stopGatewayProcess,
   waitForGatewayReady,
