@@ -63,6 +63,23 @@ class AndroidAudioInputSessionTest {
   }
 
   @Test
+  fun communicationCaptureKeepsLineAndHdmiOutputsInsteadOfForcingTheSpeaker() {
+    val sinkTypes = listOf(AudioDeviceInfo.TYPE_LINE_ANALOG, AudioDeviceInfo.TYPE_AUX_LINE, AudioDeviceInfo.TYPE_HDMI)
+    val selectedTypes =
+      sinkTypes.map { type ->
+        val speaker = audioDevice(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+        val external = audioDevice(type)
+        shadowAudioManager.setAvailableCommunicationDevices(listOf(speaker, external))
+        AndroidAudioInputSession
+          .open(context, 24_000, 4_800, communication = true)
+          .use {
+            audioManager.communicationDevice?.type
+          }.also { assertNull(audioManager.communicationDevice) }
+      }
+    assertEquals(sinkTypes, selectedTypes)
+  }
+
+  @Test
   fun cancelledOpenerCannotDisplaceTheActiveRoute() {
     val headset = audioDevice(AudioDeviceInfo.TYPE_BLE_HEADSET)
     shadowAudioManager.setAvailableCommunicationDevices(listOf(headset))

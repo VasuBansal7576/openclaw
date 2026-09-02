@@ -50,6 +50,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -312,7 +313,6 @@ class TalkModeManager internal constructor(
   private var lastTranscript: String = ""
   private var lastHeardAtMs: Long? = null
   private var lastSpokenText: String? = null
-  private var lastInterruptedAtSeconds: Double? = null
 
   // Interrupt-on-speech is disabled by default: starting a SpeechRecognizer during
   // TTS creates an audio session conflict on some OEMs. Can be enabled via gateway talk config.
@@ -332,6 +332,7 @@ class TalkModeManager internal constructor(
   private val audioInputGeneration = AtomicLong(0L)
 
   @Volatile private var realtimeSessionId: String? = null
+  private var realtimeRequestLease: GatewaySession.RequestLease? = null
   private var realtimeCaptureJob: Job? = null
   private var realtimeAppendJob: Job? = null
   private val realtimeCapturePauseLock = Any()
@@ -408,6 +409,7 @@ class TalkModeManager internal constructor(
     val token: Long,
     val job: Job,
     var phase: PlaybackPhase = PlaybackPhase.Preparing,
+    var releaseAudioFocus: (() -> Unit)? = null,
   )
 
   private var localPlayback: PlaybackLease? = null
@@ -416,23 +418,6 @@ class TalkModeManager internal constructor(
 
   @Volatile private var finalizeInFlight = false
   private var listenWatchdogJob: Job? = null
-
-  private var audioFocusRequest: AudioFocusRequest? = null
-  private val audioFocusListener =
-    AudioManager.OnAudioFocusChangeListener { focusChange ->
-      when (focusChange) {
-        AudioManager.AUDIOFOCUS_LOSS,
-        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
-        -> {
-          if (_isSpeaking.value) {
-            Log.d(tag, "audio focus lost; stopping TTS")
-            stopSpeaking(resetInterrupt = true)
-          }
-        }
-
-        else -> { /* regained or duck — ignore */ }
-      }
-    }
 
   /** Updates the chat session used for TalkMode turns and wake-command replies. */
   fun setMainSessionKey(sessionKey: String?) {
@@ -490,20 +475,6 @@ class TalkModeManager internal constructor(
       session.request(method, paramsJson, timeoutMs)
     } else {
       session.requestForEndpoint(gatewayId, method, paramsJson, timeoutMs)
-    }
-  }
-
-  private suspend fun sendGatewayRequestFrame(
-    method: String,
-    paramsJson: String?,
-    timeoutMs: Long,
-    onError: (GatewaySession.ErrorShape) -> Unit,
-  ) {
-    val gatewayId = gatewayStableId()?.trim()?.takeIf { it.isNotEmpty() }
-    if (gatewayId == null) {
-      session.sendRequestFrame(method, paramsJson, timeoutMs, onError)
-    } else {
-      session.sendRequestFrameForEndpoint(gatewayId, method, paramsJson, timeoutMs, onError)
     }
   }
 
@@ -614,7 +585,7 @@ class TalkModeManager internal constructor(
         if (captureGeneration != startGeneration.get() || !canStartCapture()) {
           throw IllegalStateException("NODE_BACKGROUND_UNAVAILABLE: command requires foreground")
         }
-        stopSpeaking(resetInterrupt = false)
+        cancelActivePlayback()
         // Capture outside pauseLock: Gateway enqueue takes its lifecycle lock before this owner lock.
         val lease = session.captureRequestLease(gatewayStableId())
         val finishPause =
@@ -990,7 +961,7 @@ class TalkModeManager internal constructor(
     }
     if (!enabled) {
       stopRealtimePlayback()
-      stopSpeaking()
+      cancelActivePlayback()
     }
   }
 
@@ -1090,7 +1061,7 @@ class TalkModeManager internal constructor(
       }
     // Completion handlers and SystemSpeech's beforeSpeak callback can reenter capture ownership.
     cancelled.forEach { it.cancel() }
-    stopSpeaking()
+    cancelActivePlayback()
     systemSpeech.shutdown()
   }
 
@@ -1200,6 +1171,7 @@ class TalkModeManager internal constructor(
           ),
         )
         realtimeSessionId = sessionId
+        realtimeRequestLease = lease
         realtimePlayoutSession = createRealtimePlayoutSession(sessionId, lease)
         val pause = realtimeCapturePause
         if (pause != null) {
@@ -1322,6 +1294,7 @@ class TalkModeManager internal constructor(
   /** Caller holds [realtimeCapturePauseLock] so PTT cannot miss newly installed jobs. */
   @SuppressLint("MissingPermission")
   private fun startRealtimeCaptureLocked(sessionId: String) {
+    val lease = realtimeRequestLease
     audioRetirement.retire(realtimeCaptureJob, realtimeAudioInput)
     realtimeAudioInput = null
     realtimeAppendJob?.cancel()
@@ -1345,16 +1318,29 @@ class TalkModeManager internal constructor(
               put("timestamp", JsonPrimitive(SystemClock.elapsedRealtime()))
             }
           try {
-            sendGatewayRequestFrame(
+            session.sendRequestFrameForEndpoint(
+              lease?.endpointStableId,
               "talk.session.appendAudio",
               params.toString(),
               timeoutMs = 8_000,
+              withEnqueue = { enqueue ->
+                // Cancellation can claim capture while this frame waits for the socket.
+                synchronized(realtimeCapturePauseLock) {
+                  if (realtimeSessionId != sessionId || audioInputGeneration.get() != inputGeneration || !shouldAppendRealtimeCapturedFrame(frame.size)) {
+                    throw CancellationException("realtime audio frame superseded")
+                  }
+                  check(lease?.isCurrent() == true) { "realtime audio connection changed" }
+                  enqueue()
+                }
+              },
             ) { error ->
               Log.w(tag, "realtime appendAudio failed: ${error.message}")
               failRealtimeRelay(sessionId, error.message, inputGeneration = inputGeneration)
             }
+          } catch (_: CancellationException) {
+            // A rejected frame does not end capture; actual job cancellation does.
+            currentCoroutineContext().ensureActive()
           } catch (err: Throwable) {
-            if (err is CancellationException) throw err
             Log.w(tag, "realtime appendAudio failed: ${err.message ?: err::class.simpleName}")
             failRealtimeRelay(sessionId, err.message ?: err::class.simpleName ?: "request failed", inputGeneration = inputGeneration)
           }
@@ -1647,6 +1633,7 @@ class TalkModeManager internal constructor(
     val status = currentStatus
     val sessionId = realtimeSessionId
     realtimeSessionId = null
+    realtimeRequestLease = null
     audioInputGeneration.incrementAndGet()
     onAppliedAudioInputChanged(null)
     val cleared =
@@ -2311,7 +2298,7 @@ class TalkModeManager internal constructor(
     }
     if (_isSpeaking.value && interruptOnSpeech) {
       if (shouldInterrupt(trimmed)) {
-        stopSpeaking()
+        cancelActivePlayback()
       }
       return
     }
@@ -2573,10 +2560,6 @@ class TalkModeManager internal constructor(
         "Talk Mode active. Reply in a concise, spoken tone.",
         "You may optionally prefix the response with JSON (first line) to set ElevenLabs voice (id or alias), e.g. {\"voice\":\"<id>\",\"once\":true}.",
       )
-    lastInterruptedAtSeconds?.let {
-      lines.add("Assistant speech interrupted at ${"%.1f".format(it)}s.")
-      lastInterruptedAtSeconds = null
-    }
     lines.add("")
     lines.add(transcript)
     return lines.joinToString("\n")
@@ -2800,9 +2783,13 @@ class TalkModeManager internal constructor(
           failure?.let { setStatus(it) }
         }
       }
-      if (shouldResumeAfterSpeak) {
-        withContext(NonCancellable) {
-          onAfterSpeak()
+      try {
+        lease.releaseAudioFocus?.invoke()
+      } finally {
+        if (shouldResumeAfterSpeak) {
+          withContext(NonCancellable) {
+            onAfterSpeak()
+          }
         }
       }
     }
@@ -2845,9 +2832,9 @@ class TalkModeManager internal constructor(
       lease.phase = PlaybackPhase.Playing
       publishSpeakingState()
       setStatus(nativeText("Speaking…"))
+      requestAudioFocusForTts(lease)
     }
     ensureInterruptListener()
-    requestAudioFocusForTts()
   }
 
   fun stopTts() {
@@ -2870,7 +2857,7 @@ class TalkModeManager internal constructor(
         }
       }
     }
-    stopSpeaking(resetInterrupt = true)
+    cancelActivePlayback()
   }
 
   private suspend fun cancelRealtimeOutput(
@@ -2929,14 +2916,6 @@ class TalkModeManager internal constructor(
       }
     }
 
-  private fun stopSpeaking(resetInterrupt: Boolean = true) {
-    if (resetInterrupt && _isSpeaking.value) {
-      lastInterruptedAtSeconds = null
-    }
-    cancelActivePlayback()
-    abandonAudioFocus()
-  }
-
   internal fun shouldAllowSpeechInterrupt(): Boolean = !finalizeInFlight && !isRealtimeCapturePaused()
 
   private fun clearListenWatchdog() {
@@ -2944,9 +2923,9 @@ class TalkModeManager internal constructor(
     listenWatchdogJob = null
   }
 
-  private fun requestAudioFocusForTts(): Boolean {
-    if (realtimeAudioInput != null) return true
-    val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return true
+  private fun requestAudioFocusForTts(lease: PlaybackLease) {
+    if (realtimeAudioInput != null) return
+    val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
     val req =
       AudioFocusRequest
         .Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
@@ -2956,21 +2935,16 @@ class TalkModeManager internal constructor(
             .setUsage(AudioAttributes.USAGE_MEDIA)
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
             .build(),
-        ).setOnAudioFocusChangeListener(audioFocusListener)
-        .build()
-    audioFocusRequest = req
+        ).setOnAudioFocusChangeListener { change ->
+          if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+            lease.job.cancel(CancellationException("audio focus lost"))
+          }
+        }.build()
+    // Android keys focus by listener identity. Old cleanup and callbacks must
+    // retain this playback's request rather than touching its replacement.
+    lease.releaseAudioFocus = { am.abandonAudioFocusRequest(req) }
     val result = am.requestAudioFocus(req)
     Log.d(tag, "audio focus request result=$result")
-    return result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED || result == AudioManager.AUDIOFOCUS_REQUEST_DELAYED
-  }
-
-  private fun abandonAudioFocus() {
-    val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
-    audioFocusRequest?.let {
-      am.abandonAudioFocusRequest(it)
-      Log.d(tag, "audio focus abandoned")
-    }
-    audioFocusRequest = null
   }
 
   private fun shouldInterrupt(transcript: String): Boolean {

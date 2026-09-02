@@ -21,6 +21,7 @@ import android.Manifest
 import android.content.ComponentName
 import android.content.IntentFilter
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
@@ -76,6 +77,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -875,8 +877,30 @@ class TalkModeManagerTest {
     }
 
   @Test
+  fun localPlaybackReleasesItsAudioFocusForEveryTerminalOutcome() =
+    runTest {
+      for (outcome in listOf("completed", "failed", "focus-lost", "cancelled")) {
+        withStartedLocalPlayback { manager, playback, player ->
+          val audio = shadowOf(RuntimeEnvironment.getApplication().getSystemService(AudioManager::class.java))
+          val focus = checkNotNull(audio.lastAudioFocusRequest.audioFocusRequest)
+          when (outcome) {
+            "completed" -> player.finished.complete(Unit)
+            "failed" -> player.finished.completeExceptionally(IllegalStateException("speaker failed"))
+            "focus-lost" -> audio.lastAudioFocusRequest.listener.onAudioFocusChange(AudioManager.AUDIOFOCUS_LOSS)
+            "cancelled" -> manager.stopTts()
+          }
+          runCurrent()
+          assertTrue("Playback must finish after $outcome", playback.isCompleted)
+          assertFalse(manager.isSpeaking.value)
+          assertSame("Focus must return after $outcome", focus, audio.lastAbandonedAudioFocusRequest)
+        }
+      }
+    }
+
+  @Test
   fun cancelledPlaybackCompletionKeepsReplacementSpeaking() =
     runTest {
+      val audio = shadowOf(RuntimeEnvironment.getApplication().getSystemService(AudioManager::class.java))
       val synthesizer = FakeTalkSpeechSynthesizer()
       synthesizer.result.complete(
         TalkSpeakResult.Success(
@@ -909,6 +933,7 @@ class TalkModeManagerTest {
           assertEquals(1, player.playCalls)
           assertEquals(1, callbackDepth)
           assertTrue(manager.isSpeaking.value)
+          val firstFocus = checkNotNull(audio.lastAudioFocusRequest)
 
           // Cancellation queues the old caller's cleanup; the replacement may
           // start before that cleanup runs on another dispatcher.
@@ -919,6 +944,8 @@ class TalkModeManagerTest {
           assertTrue(first.isCancelled)
           assertFalse(first.isCompleted)
           assertTrue(manager.isSpeaking.value)
+          val replacementFocus = checkNotNull(audio.lastAudioFocusRequest.audioFocusRequest)
+          firstFocus.listener.onAudioFocusChange(AudioManager.AUDIOFOCUS_LOSS)
 
           runCurrent()
           assertTrue(first.isCompleted)
@@ -931,6 +958,7 @@ class TalkModeManagerTest {
           next.join()
           assertFalse(manager.isSpeaking.value)
           assertEquals(0, callbackDepth)
+          assertSame(replacementFocus, audio.lastAbandonedAudioFocusRequest)
         } finally {
           manager.stopAllCapture()
           first.cancelAndJoin()
@@ -2031,6 +2059,116 @@ class TalkModeManagerTest {
           assertTrue(shadow.spokenTextList.all { it.length <= TextToSpeech.getMaxSpeechInputLength() })
         }
         shadowOf(Looper.getMainLooper()).idle()
+      }
+    }
+
+  @Test
+  fun stopTtsDiscardsQueuedAudioWithoutStoppingLaterCapture() =
+    runBlocking {
+      val frames = java.util.concurrent.LinkedBlockingQueue<ByteArray>()
+      val reads =
+        java.util.concurrent.atomic
+          .AtomicInteger()
+      val firstFrameQueued = CountDownLatch(1)
+      val resumedFrameQueued = CountDownLatch(1)
+      val appends = ConcurrentLinkedQueue<String>()
+      val cancelled = CompletableDeferred<Pair<String, WebSocket>>()
+      val resumed = CompletableDeferred<Unit>()
+      org.robolectric.shadows.ShadowAudioRecord.setSourceProvider {
+        object : org.robolectric.shadows.ShadowAudioRecord.AudioRecordSource {
+          override fun readInByteArray(
+            bytes: ByteArray,
+            offset: Int,
+            size: Int,
+            blocking: Boolean,
+          ): Int {
+            when (reads.incrementAndGet()) {
+              2 -> firstFrameQueued.countDown()
+              3 -> resumedFrameQueued.countDown()
+            }
+            val frame = checkNotNull(frames.poll(5, TimeUnit.SECONDS)) { "Capture fixture did not receive its next frame" }
+            frame.copyInto(bytes, destinationOffset = offset)
+            return frame.size
+          }
+        }
+      }
+      try {
+        withRealtimePlayback(interceptRequest = { request, socket ->
+          when (request.getValue("method").jsonPrimitive.content) {
+            "talk.session.cancelOutput" -> {
+              cancelled.complete(request.getValue("id").jsonPrimitive.content to socket)
+              true
+            }
+
+            "talk.session.appendAudio" -> {
+              appends +=
+                request
+                  .getValue("params")
+                  .jsonObject
+                  .getValue("audioBase64")
+                  .jsonPrimitive.content
+              resumed.complete(Unit)
+              false
+            }
+
+            else -> {
+              false
+            }
+          }
+        }) { proof ->
+          val gateway = readPrivateField(proof.manager, "session") as GatewaySession
+          val transport = readPrivateField(gateway, "writeLock") as kotlinx.coroutines.sync.Mutex
+          val lockOwner = Any()
+          transport.lock(lockOwner)
+          var held = true
+          var capture: Thread? = null
+          try {
+            frames.put(byteArrayOf(1, 2))
+            capture = Thread { proof.drainCancelledCapture() }.also { it.start() }
+            assertTrue("Capture must queue the first frame", firstFrameQueued.await(5, TimeUnit.SECONDS))
+            proof.drainCancelledCapture()
+            proof.manager.realtimeEvent("""{"relaySessionId":"playback-relay","type":"audio","talkEvent":{"turnId":"old-turn"},"audioBase64":"AAA="}""")
+            proof.manager.stopTts()
+            proof.scheduler.runCurrent()
+            assertNotNull(readPrivateField(proof.manager, "pendingRealtimeOutputClear"))
+
+            transport.unlock(lockOwner)
+            held = false
+            val cancellationDeadline = System.nanoTime() + 5_000_000_000L
+            while (!cancelled.isCompleted) {
+              proof.drainCancelledCapture()
+              proof.scheduler.runCurrent()
+              check(System.nanoTime() < cancellationDeadline) { "Cancellation did not reach the peer" }
+              withContext(Dispatchers.Default) { delay(10) }
+            }
+            val (id, socket) = withTimeout(5_000) { cancelled.await() }
+            assertTrue("The peer must not receive a pre-cancellation frame", appends.isEmpty())
+            socket.send("""{"type":"res","id":"$id","ok":true,"payload":{"ok":true,"status":"idle","turnId":"old-turn"}}""")
+            val deadline = System.nanoTime() + 5_000_000_000L
+            while (readPrivateField(proof.manager, "pendingRealtimeOutputClear") != null) {
+              proof.scheduler.runCurrent()
+              check(System.nanoTime() < deadline) { "Cancellation did not settle" }
+              withContext(Dispatchers.Default) { delay(10) }
+            }
+
+            frames.put(byteArrayOf(3, 4))
+            assertTrue("Capture must queue a new frame after cancellation", resumedFrameQueued.await(5, TimeUnit.SECONDS))
+            proof.drainCancelledCapture()
+            withTimeout(5_000) { resumed.await() }
+            assertEquals(listOf(Base64.encodeToString(byteArrayOf(3, 4), Base64.NO_WRAP)), appends.toList())
+            assertTrue(proof.manager.isEnabled.value)
+          } finally {
+            if (held) transport.unlock(lockOwner)
+            proof.manager.stopAllCapture()
+            frames.offer(byteArrayOf())
+            capture?.join(5_000)
+            assertFalse("Capture worker must terminate", capture?.isAlive == true)
+            proof.drainCancelledCapture()
+          }
+        }
+      } finally {
+        org.robolectric.shadows.ShadowAudioRecord
+          .clearSource()
       }
     }
 

@@ -396,6 +396,9 @@ private val externalCommunicationOutputs =
   setOf(
     AudioDeviceInfo.TYPE_WIRED_HEADSET,
     AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+    AudioDeviceInfo.TYPE_LINE_ANALOG,
+    AudioDeviceInfo.TYPE_AUX_LINE,
+    AudioDeviceInfo.TYPE_HDMI,
     AudioDeviceInfo.TYPE_USB_HEADSET,
     AudioDeviceInfo.TYPE_USB_DEVICE,
     AudioDeviceInfo.TYPE_USB_ACCESSORY,
