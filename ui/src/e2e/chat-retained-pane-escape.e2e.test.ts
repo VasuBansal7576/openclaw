@@ -12,7 +12,7 @@ import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts"
 
 const suite = createControlUiE2eSuite({
   name: "Control UI retained pane Escape",
-  startServer: () => startControlUiE2eServer(undefined, { source: true }),
+  startServer: () => startControlUiE2eServer(),
   startServerBeforeBrowser: true,
 });
 const captureProof = process.env.OPENCLAW_CAPTURE_UI_PROOF === "1";
