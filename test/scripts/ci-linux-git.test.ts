@@ -263,48 +263,18 @@ const historyProfiles: {
   step: string;
   env: Record<string, string>;
   target: string;
-  depth: number;
-  consumer: string;
 }[] = [
   {
     job: "preflight",
     step: "Resolve exact diff base",
     env: { GITHUB_EVENT_NAME: "workflow_dispatch", RELEASE_GATE: "true" },
     target: "+refs/pull/17/merge:refs/remotes/origin/release-gate-merge",
-    depth: 2,
-    consumer: "",
   },
   {
     job: "checks-fast-core",
     step: "Prepare release-gate ratchet merge tree",
     env: {},
     target: "+refs/pull/17/merge:refs/remotes/origin/ci-ratchet-merge",
-    depth: 2,
-    consumer: "",
-  },
-  {
-    job: "checks-fast-core",
-    step: "Run ${{ matrix.task }} (${{ matrix.runtime }})",
-    env: { TASK: "bundled-protocol" },
-    target: `+${base}:refs/remotes/origin/protocol-since-base`,
-    depth: 1,
-    consumer: "protocol:check",
-  },
-  {
-    job: "check-shard",
-    step: "Run check shard",
-    env: { TASK: "guards" },
-    target: `+${base}:refs/remotes/origin/ci-base`,
-    depth: 1,
-    consumer: "scripts/report-test-temp-creations.mjs",
-  },
-  {
-    job: "check-shard",
-    step: "Run check shard",
-    env: { TASK: "npm-lock" },
-    target: `+${base}:refs/remotes/origin/npm-lock-base`,
-    depth: 1,
-    consumer: "deps:npm-lock:check:changed",
   },
 ];
 
@@ -320,7 +290,7 @@ linuxIt.each(
   ]),
 )(
   "$job/$step joins supplemental history before consumption ($label, $target)",
-  async ({ job, step, env, target, depth, consumer, fetchResults, code }) => {
+  async ({ job, step, env, target, fetchResults, code }) => {
     const report = await runCiGitStep({
       job,
       step,
@@ -331,15 +301,7 @@ linuxIt.each(
     });
     expect(report.code).toBe(code);
     expect(report.fetches).toHaveLength(1);
-    expect(report.fetches[0]?.args).toEqual(expect.arrayContaining([target, `--depth=${depth}`]));
-    if (consumer) {
-      expect(report.commands.some(({ tool, args }) => tool !== "git" && args[0] === consumer)).toBe(
-        code === 0,
-      );
-    }
-    if (env.TASK === "npm-lock") {
-      expect(report.commands.some(({ args }) => args[0] === "deps:npm-lock:check")).toBe(false);
-    }
+    expect(report.fetches[0]?.args).toEqual(expect.arrayContaining([target, "--depth=2"]));
     if (step === "Resolve exact diff base") {
       expect(report.githubOutput).toBe(code === 0 ? `sha=${base}\nhead_sha=${merge}\n` : "");
     }
@@ -382,40 +344,48 @@ linuxIt(
   55_000,
 );
 
-linuxIt(
-  "cancellation during raw Git timeout cleanup prevents npm-lock fallback",
-  async () => {
-    const report = await runCiGitStep({
-      job: "check-shard",
-      step: "Run check shard",
-      env: { TASK: "npm-lock" },
-      fetchResults: ["hang"],
-      prepare: true,
-      cancelDuringCleanup: true,
-    });
-    expect(report.cancelledDuringCleanup).toBe(true);
-    expect(report.code).toBe(143);
-    expect(report.fetches).toHaveLength(1);
-    expect(report.commands.filter(({ tool }) => tool === "pnpm")).toEqual([]);
+posixIt.each([
+  {
+    task: "guards",
+    job: "check-shard",
+    step: "Run check shard",
+    consumer: [
+      "scripts/report-test-temp-creations.mjs",
+      "--base",
+      base,
+      "--head",
+      "HEAD",
+      "--no-merge-base",
+    ],
   },
-  55_000,
-);
-
-linuxIt.each([23, "hang"] satisfies FetchResult[])(
-  "npm-lock safely falls back to a full sweep after joined fetch failure (%s)",
-  async (failure) => {
+  {
+    task: "npm-lock",
+    job: "check-shard",
+    step: "Run check shard",
+    consumer: ["deps:npm-lock:check:changed", "--base", base, "--head", "HEAD"],
+  },
+  {
+    task: "bundled-protocol",
+    job: "checks-fast-core",
+    step: "Run ${{ matrix.task }} (${{ matrix.runtime }})",
+    consumer: ["protocol:check"],
+  },
+])(
+  "$task consumes the prepared diff base without a network fetch",
+  async ({ task, job, step, consumer }) => {
     const report = await runCiGitStep({
-      job: "check-shard",
-      step: "Run check shard",
-      env: { TASK: "npm-lock" },
-      fetchResults: [failure],
+      job,
+      step,
+      env: { TASK: task, CHECKOUT_BASE_SHA: base },
+      fetchResults: [128],
       prepare: true,
     });
-    expect(report.code).toBe(0);
-    expect(report.fetches).toHaveLength(1);
-    expect(report.commands.filter(({ tool }) => tool === "pnpm").map(({ args }) => args)).toEqual([
-      ["deps:npm-lock:check"],
-    ]);
+    expect(report.code, report.output).toBe(0);
+    expect(report.fetches).toEqual([]);
+    expect(
+      report.commands.filter(({ tool }) => tool !== "git").map(({ args }) => args),
+    ).toContainEqual(consumer);
+    expect(report.commands.some(({ args }) => args[0] === "deps:npm-lock:check")).toBe(false);
   },
   55_000,
 );
