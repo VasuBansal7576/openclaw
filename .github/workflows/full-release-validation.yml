@@ -1180,7 +1180,7 @@ jobs:
     name: Run release checks independent validation
     needs: [resolve_target, evidence_reuse]
     if: ${{ always() && github.run_attempt == 1 && needs.resolve_target.result == 'success' && contains(fromJSON('["all","install-smoke","live-e2e","qa-parity","qa-live"]'), inputs.rerun_group) && needs.evidence_reuse.outputs.reuse != 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || 'blacksmith-4vcpu-ubuntu-2404' }}
     timeout-minutes: 15
     outputs:
       run_id: ${{ steps.dispatch.outputs.run_id }}
@@ -1219,7 +1219,7 @@ jobs:
     name: Run release checks candidate validation
     needs: [resolve_target, evidence_reuse, candidate_acquisition]
     if: ${{ always() && github.run_attempt == 1 && needs.resolve_target.result == 'success' && (needs.resolve_target.outputs.release_candidate_artifact_required != 'true' || (needs.candidate_acquisition.result == 'success' && needs.candidate_acquisition.outputs.state == 'ready')) && (contains(fromJSON('["all","cross-os","package"]'), inputs.rerun_group) || (inputs.rerun_group == 'live-e2e' && needs.resolve_target.outputs.live_suite_filter == '')) && needs.evidence_reuse.outputs.reuse != 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || 'blacksmith-4vcpu-ubuntu-2404' }}
     timeout-minutes: 15
     outputs:
       run_id: ${{ steps.dispatch.outputs.run_id }}
@@ -1283,7 +1283,7 @@ jobs:
     name: Run product performance evidence
     needs: [resolve_target, evidence_reuse]
     if: ${{ always() && github.run_attempt == 1 && needs.resolve_target.result == 'success' && needs.resolve_target.outputs.coverage_policy != 'npm-beta-v1' && contains(fromJSON('["all","performance"]'), inputs.rerun_group) && needs.evidence_reuse.outputs.reuse != 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || 'blacksmith-4vcpu-ubuntu-2404' }}
     timeout-minutes: 15
     outputs:
       run_id: ${{ steps.dispatch.outputs.run_id }}
@@ -1468,7 +1468,7 @@ jobs:
         performance,
       ]
     if: always()
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || 'blacksmith-4vcpu-ubuntu-2404' }}
     timeout-minutes: 15
     outputs:
       sha256: ${{ steps.plan.outputs.sha256 }}
@@ -1701,7 +1701,7 @@ jobs:
     name: Release Decision
     needs: [resolve_target, release_execution_plan]
     if: always()
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || 'blacksmith-4vcpu-ubuntu-2404' }}
     timeout-minutes: 720
     outputs:
       state: ${{ steps.state.outputs.state }}
@@ -1760,7 +1760,7 @@ jobs:
     name: Diagnostic Drain
     needs: [resolve_target, release_execution_plan]
     if: always()
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || 'blacksmith-4vcpu-ubuntu-2404' }}
     timeout-minutes: 720
     outputs:
       state: ${{ steps.state.outputs.state }}

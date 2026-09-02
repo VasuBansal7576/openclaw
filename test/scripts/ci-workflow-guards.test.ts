@@ -141,6 +141,7 @@ function evaluateWorkflowExpression(
     steps?: Record<string, { outputs: Record<string, string> }>;
     targetContextRef?: string;
     targetRef?: string;
+    useGithubHostedRunners?: boolean;
     workflowSha?: string;
   },
 ) {
@@ -190,6 +191,7 @@ function evaluateWorkflowExpression(
       release_gate: context.releaseGate ?? false,
       target_context_ref: context.targetContextRef ?? "",
       target_ref: context.targetRef ?? "",
+      use_github_hosted_runners: context.useGithubHostedRunners ?? false,
     },
     matrix: context.matrix ?? {},
     runner: { environment: context.runnerEnvironment ?? "" },
@@ -3833,6 +3835,103 @@ NODE
         expect(evaluateWorkflowExpression(expression, { ...context, runnerBackend }), jobName).toBe(
           jobName === "preflight" ? "blacksmith-4vcpu-ubuntu-2404" : "ubuntu-24.04",
         );
+      }
+    }
+  });
+
+  it.each(
+    [
+      {
+        file: "full-release-validation.yml",
+        runner: "blacksmith-4vcpu-ubuntu-2404",
+        jobs: [
+          "release_checks_independent",
+          "release_checks_candidate",
+          "performance",
+          "release_execution_plan",
+          "release_decision",
+          "diagnostic_drain",
+        ],
+      },
+      {
+        file: "openclaw-npm-preflight.yml",
+        runner: "blacksmith-32vcpu-ubuntu-2404",
+        jobs: [
+          "check_openclaw_npm",
+          "prepare_openclaw_npm",
+          "check_sdk_npm",
+          "check_dependencies_npm",
+          "check_contents_npm",
+          "verify_openclaw_npm",
+        ],
+      },
+      {
+        file: "qa-live-transports-convex.yml",
+        runner: "blacksmith-8vcpu-ubuntu-2404",
+        jobs: ["authorize_actor", "validate_selected_ref"],
+      },
+      {
+        file: "qa-live-transports-convex.yml",
+        runner: "blacksmith-16vcpu-ubuntu-2404",
+        jobs: [
+          "run_mock_parity",
+          "run_live_runtime_token_efficiency",
+          "run_live_matrix",
+          "run_live_buzz",
+          "run_live_telegram",
+          "run_live_discord",
+          "run_live_whatsapp",
+          "run_live_slack",
+        ],
+      },
+      {
+        file: "openclaw-performance.yml",
+        runner: "blacksmith-16vcpu-ubuntu-2404",
+        jobs: ["kova", "source_performance"],
+      },
+      {
+        file: "npm-telegram-beta-e2e.yml",
+        runner: "blacksmith-32vcpu-ubuntu-2404",
+        jobs: ["run_package_telegram_e2e"],
+      },
+      {
+        file: "openclaw-live-and-e2e-checks-reusable.yml",
+        runner: "blacksmith-32vcpu-ubuntu-2404",
+        jobs: ["validate_docker_openwebui"],
+      },
+      {
+        file: "openclaw-release-checks.yml",
+        runner: "blacksmith-8vcpu-ubuntu-2404",
+        jobs: ["qa_lab_runtime_pair_lane_release_checks"],
+      },
+    ].flatMap(({ file, runner, jobs }) => jobs.map((job) => ({ file, runner, job }))),
+  )("honors the global hosted runner override for $file/$job", ({ file, runner, job }) => {
+    const workflow = parse(readFileSync(`.github/workflows/${file}`, "utf8"));
+    const runsOn = workflow.jobs[job]["runs-on"];
+    const supportsHostedInput =
+      file === "openclaw-npm-preflight.yml" || file === "openclaw-live-and-e2e-checks-reusable.yml";
+
+    for (const runnerBackend of ["github", "", "blacksmith", "hybrid"] as const) {
+      for (const useGithubHostedRunners of [false, true]) {
+        const expectedRunner =
+          runnerBackend === "github" || (supportsHostedInput && useGithubHostedRunners)
+            ? "ubuntu-24.04"
+            : runner;
+        const actualRunner =
+          typeof runsOn === "string" && runsOn.startsWith("${{")
+            ? evaluateWorkflowExpression(runsOn, {
+                eventName: "workflow_dispatch",
+                repository: "openclaw/openclaw",
+                runAttempt: 1,
+                runnerBackend,
+                useGithubHostedRunners,
+              })
+            : runsOn;
+
+        expect(
+          actualRunner,
+          `${runnerBackend || "unset"}, use_github_hosted_runners=${useGithubHostedRunners}`,
+        ).toBe(expectedRunner);
       }
     }
   });

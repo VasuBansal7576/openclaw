@@ -8209,14 +8209,13 @@ printf '%s\\n' "$DEEPSEEK_API_KEY" "$DEEPINFRA_API_KEY"`,
     }
   });
 
-  it("isolates Open WebUI release coverage on a lean large-disk runner", () => {
+  it("isolates Open WebUI release coverage with lean runtime setup", () => {
     const job = workflowJob(LIVE_E2E_WORKFLOW, "validate_docker_openwebui");
     const setupNode = workflowStep(job, "Setup Node environment");
 
     expect(job.if).toBe(
       "inputs.include_openwebui && inputs.docker_lanes == '' && (inputs.release_test_profile == 'stable' || inputs.release_test_profile == 'full')",
     );
-    expect(job["runs-on"]).toBe("blacksmith-32vcpu-ubuntu-2404");
     expect(job.env?.OPENCLAW_DOCKER_ALL_RELEASE_PROFILE).toBe("${{ inputs.release_test_profile }}");
     expect(setupNode.with).toMatchObject({
       "cache-mode": "off",
@@ -8834,19 +8833,6 @@ printf '%s\\n' "$DEEPSEEK_API_KEY" "$DEEPINFRA_API_KEY"`,
       expect(workflowJob(RELEASE_TELEGRAM_QA_WORKFLOW, jobName)["runs-on"]).toBe("ubuntu-24.04");
     }
 
-    for (const jobName of [
-      "run_mock_parity",
-      "run_live_matrix",
-      "run_live_telegram",
-      "run_live_discord",
-      "run_live_whatsapp",
-      "run_live_slack",
-      "run_live_runtime_token_efficiency",
-    ]) {
-      expect(workflowJob(QA_LIVE_TRANSPORTS_WORKFLOW, jobName)["runs-on"]).toBe(
-        "blacksmith-16vcpu-ubuntu-2404",
-      );
-    }
     expectTextToIncludeAll(liveE2eWorkflow, [
       "OPENCLAW_LIVE_GATEWAY_STEP_TIMEOUT_MS=180000",
       "OPENCLAW_LIVE_GATEWAY_MODEL_TIMEOUT_MS=600000",
@@ -10679,7 +10665,6 @@ wait_for_run plugin-clawhub-new.yml 123 "${expectedSha}" || status=$?
       FULL_RELEASE_VALIDATION_WORKFLOW,
       "release_checks_candidate",
     );
-    expect(releaseChecksParent["runs-on"]).toBe("blacksmith-4vcpu-ubuntu-2404");
     expect(releaseChecksParent["timeout-minutes"]).toBe(15);
     const releasePackageTimeouts = {
       beta: releasePackagePaths.beta.reduce((total, timeout) => total + timeout, 0),
