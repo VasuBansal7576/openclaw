@@ -1,7 +1,8 @@
 import { html, nothing, render } from "lit";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { handleMarkdownCodeBlockClick, markdownCodeBlocks } from "./markdown-code-blocks.ts";
+import { markdownBlocks } from "./markdown-blocks.ts";
+import { handleMarkdownCodeBlockClick } from "./markdown-code-blocks.ts";
 import { toSanitizedMarkdownHtml } from "./markdown.ts";
 
 const originalExecCommand = Object.getOwnPropertyDescriptor(document, "execCommand");
@@ -48,7 +49,7 @@ it("reobserves reused code DOM while fencing scans queued before disconnect", as
     codeBlockInteraction: "interactive",
   });
   const part = render(
-    html`<section ${markdownCodeBlocks()}>${unsafeHTML(content)}</section>`,
+    html`<section ${markdownBlocks()}>${unsafeHTML(content)}</section>`,
     container,
   );
   const code = container.querySelector("code");

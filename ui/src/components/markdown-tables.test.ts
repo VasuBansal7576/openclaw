@@ -1,6 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { installDialogPolyfill, waitForRenderedModalDialog } from "../test-helpers/modal-dialog.ts";
 import {
   enhanceMarkdownTables,
   handleMarkdownTableInteraction,
@@ -13,8 +14,7 @@ const writeText = vi.fn(async (_text: string) => undefined);
 let clipboardDescriptor: PropertyDescriptor | undefined;
 let mutationObserverDescriptor: PropertyDescriptor | undefined;
 let resizeObserverDescriptor: PropertyDescriptor | undefined;
-let showModalDescriptor: PropertyDescriptor | undefined;
-let closeDescriptor: PropertyDescriptor | undefined;
+let restoreDialogPolyfill: () => void;
 
 function restoreProperty(
   target: object,
@@ -89,8 +89,7 @@ describe("Markdown table interactions", () => {
     clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
     mutationObserverDescriptor = Object.getOwnPropertyDescriptor(globalThis, "MutationObserver");
     resizeObserverDescriptor = Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver");
-    showModalDescriptor = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal");
-    closeDescriptor = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "close");
+    restoreDialogPolyfill = installDialogPolyfill();
     Object.defineProperty(globalThis, "MutationObserver", {
       configurable: true,
       writable: true,
@@ -106,29 +105,15 @@ describe("Markdown table interactions", () => {
       configurable: true,
       value: { writeText },
     });
-    Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
-      configurable: true,
-      value: vi.fn(function (this: HTMLDialogElement) {
-        this.setAttribute("open", "");
-      }),
-    });
-    Object.defineProperty(HTMLDialogElement.prototype, "close", {
-      configurable: true,
-      value: vi.fn(function (this: HTMLDialogElement) {
-        this.removeAttribute("open");
-        this.dispatchEvent(new Event("close"));
-      }),
-    });
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    document.body.replaceChildren();
     restoreProperty(navigator, "clipboard", clipboardDescriptor);
     restoreProperty(globalThis, "MutationObserver", mutationObserverDescriptor);
     restoreProperty(globalThis, "ResizeObserver", resizeObserverDescriptor);
-    restoreProperty(HTMLDialogElement.prototype, "showModal", showModalDescriptor);
-    restoreProperty(HTMLDialogElement.prototype, "close", closeDescriptor);
-    document.body.replaceChildren();
+    restoreDialogPolyfill();
   });
 
   it("composes table chrome with session links and progress markup", () => {
@@ -180,47 +165,39 @@ describe("Markdown table interactions", () => {
     expect(copy.querySelector("svg rect")).not.toBeNull();
   });
 
-  it("restores focus after the table dialog closes", () => {
+  it("restores focus after the table dialog closes", async () => {
     const { owner } = interactiveOwner();
     const expand = owner.querySelector<HTMLButtonElement>(".markdown-table__expand")!;
     expand.focus();
     expand.click();
 
-    const dialog = document.querySelector<HTMLDialogElement>(".markdown-table-dialog")!;
+    const { dialog, modal } = await waitForRenderedModalDialog(owner);
     expect(dialog.hasAttribute("open")).toBe(true);
-    expect(dialog.querySelector("table")?.textContent).toContain("Alpha");
-
-    vi.spyOn(dialog, "getBoundingClientRect").mockReturnValue({
-      bottom: 500,
-      height: 400,
-      left: 100,
-      right: 500,
-      top: 100,
-      width: 400,
-      x: 100,
-      y: 100,
-      toJSON: () => ({}),
-    });
-    dialog.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 50, clientY: 50 }));
+    expect(modal.querySelector("table")?.textContent).toContain("Alpha");
+    dialog.dispatchEvent(new Event("pointerdown", { bubbles: true }));
     expect(document.querySelector(".markdown-table-dialog")).toBeNull();
     expect(document.activeElement).toBe(expand);
 
     expand.click();
-    const reopenedDialog = document.querySelector<HTMLDialogElement>(".markdown-table-dialog")!;
-
-    reopenedDialog.querySelector<HTMLButtonElement>(".markdown-table-dialog__close")!.click();
+    const reopened = await waitForRenderedModalDialog(owner);
+    reopened.modal.querySelector<HTMLButtonElement>(".markdown-table-dialog__close")!.click();
     expect(document.querySelector(".markdown-table-dialog")).toBeNull();
     expect(document.activeElement).toBe(expand);
   });
 
-  it("disconnects observers when the transcript owner is released", () => {
+  it("disconnects observers and removes the dialog with its transcript owner", async () => {
     const { owner } = interactiveOwner();
     const mutation = TestMutationObserver.instances.at(-1)!;
     const resize = TestResizeObserver.instances.at(-1)!;
+    owner.querySelector<HTMLButtonElement>(".markdown-table__expand")!.click();
+    const { dialog } = await waitForRenderedModalDialog(owner);
 
     releaseMarkdownTables(owner);
+    owner.remove();
 
     expect(mutation.disconnect).toHaveBeenCalledOnce();
     expect(resize.disconnect).toHaveBeenCalledOnce();
+    expect(dialog.open).toBe(false);
+    expect(document.querySelector(".markdown-table-dialog")).toBeNull();
   });
 });
