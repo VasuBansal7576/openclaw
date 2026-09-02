@@ -12,6 +12,19 @@ enum ChatReaderUserTransition: Equatable {
     case removed(latestRemainingID: UUID?)
 }
 
+enum ChatReaderInitialRestorePolicy: Equatable {
+    case liveEdge
+    case latestTurn
+}
+
+func chatReaderInitialRestorePolicy() -> ChatReaderInitialRestorePolicy {
+    #if os(iOS)
+    .liveEdge
+    #else
+    .latestTurn
+    #endif
+}
+
 func chatReaderUserTransition(
     previousID: UUID?,
     visibleIDs: [UUID]) -> ChatReaderUserTransition
@@ -960,9 +973,25 @@ extension OpenClawChatView {
     }
 
     private func restoreInitialScrollPosition() {
-        self.followTarget = .latest
-        self.hasNewerContentBelow = false
-        self.moveScrollPosition(to: self.scrollerBottomID)
+        switch chatReaderInitialRestorePolicy() {
+        case .liveEdge:
+            self.followTarget = .latest
+            self.hasNewerContentBelow = false
+            self.moveScrollPosition(to: self.scrollerBottomID)
+        case .latestTurn:
+            if let latestTurnStartID = latestVisibleTurnStartID {
+                self.followTarget = nil
+                self.hasNewerContentBelow = chatReaderHasNewerContent(
+                    after: latestTurnStartID,
+                    visibleIDs: self.transcriptRows.map(\.id),
+                    hasTransientContent: self.hasVisibleTransientContent)
+                self.moveScrollPosition(to: latestTurnStartID, anchor: Layout.newTurnAnchor)
+            } else {
+                self.followTarget = .latest
+                self.hasNewerContentBelow = false
+                self.moveScrollPosition(to: self.scrollerBottomID)
+            }
+        }
     }
 
     private func handleTimelineChange() {
