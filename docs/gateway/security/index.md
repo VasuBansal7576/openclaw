@@ -892,10 +892,10 @@ For phone-number-based channels, consider running the assistant on a separate nu
 
 ## Secret scanning
 
-CI runs the pre-commit `detect-private-key` hook over the repository. If it fails, remove or rotate the committed key material, then reproduce locally:
+CI runs the in-repo `scripts/detect-private-keys.mts` scanner over every tracked file. If it fails, remove or rotate the committed key material, then reproduce locally:
 
 ```bash
-pre-commit run --all-files detect-private-key
+node scripts/detect-private-keys.mts
 ```
 
 ## Reporting security issues

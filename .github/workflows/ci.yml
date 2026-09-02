@@ -1815,9 +1815,6 @@ jobs:
       - name: Install pre-commit
         run: python3 -m pip install --disable-pip-version-check pre-commit==4.6.2
 
-      - name: Detect committed private keys
-        run: pre-commit run --config "${PRE_COMMIT_CONFIG_PATH:-.pre-commit-config.yaml}" --all-files detect-private-key
-
       - name: Audit changed GitHub workflows with zizmor
         env:
           BASE_SHA: ${{ steps.diff_base.outputs.sha }}
@@ -1852,6 +1849,11 @@ jobs:
           set -euo pipefail
           source .ci-harness/.github/actions/setup-pnpm-store-cache/ensure-node.sh
           openclaw_ensure_node "$REQUESTED_NODE_VERSION"
+
+      # In-repo scanner: no hook-repo fetches (first-attempt runners rejected
+      # anonymous git-over-HTTPS) and no third-party hook code under this token.
+      - name: Detect committed private keys
+        run: node scripts/detect-private-keys.mts
 
       - name: Audit production dependencies
         run: node scripts/pre-commit/pnpm-audit-prod.mjs --audit-level=high
