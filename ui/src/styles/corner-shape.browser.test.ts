@@ -260,7 +260,10 @@ async function probeCorners(browser: Browser, fixtureFile: string): Promise<Corn
             const style = getComputedStyle(element);
             const radius =
               corner === "bottomLeft" ? style.borderBottomLeftRadius : style.borderTopLeftRadius;
-            return [selector, { radius, shape: style.getPropertyValue("corner-shape") }];
+            // Older Chromium keeps the keyword spelling of the same computed shape.
+            const computedShape = style.getPropertyValue("corner-shape");
+            const shape = computedShape === "round" ? "superellipse(1)" : computedShape;
+            return [selector, { radius, shape }];
           }),
         );
       },
@@ -334,11 +337,11 @@ describeCornerShape("Control UI corner curvature", () => {
         ]),
         ...ROUND_CASES.map((corner) => [
           corner.selector,
-          { radius: corner.superelliptical, shape: "round" },
+          { radius: corner.superelliptical, shape: "superellipse(1)" },
         ]),
         ...EXCLUDED_CASES.map((corner) => [
           corner.selector,
-          { radius: corner.superelliptical, shape: "round" },
+          { radius: corner.superelliptical, shape: "superellipse(1)" },
         ]),
       ]),
     );
@@ -349,7 +352,10 @@ describeCornerShape("Control UI corner curvature", () => {
 
     expect(probe).toEqual(
       Object.fromEntries(
-        ALL_CASES.map((corner) => [corner.selector, { radius: corner.circular, shape: "round" }]),
+        ALL_CASES.map((corner) => [
+          corner.selector,
+          { radius: corner.circular, shape: "superellipse(1)" },
+        ]),
       ),
     );
   });
