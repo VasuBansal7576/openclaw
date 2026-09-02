@@ -145,13 +145,8 @@ const CORNER_CASES: readonly CornerCase[] = [
     superelliptical: "8.5px",
   },
   {
-    // Real DOM shape from chat-thread-interactions.ts. Found and fixed
-    // alongside the two P2s above during a final invariant sweep of every
-    // selector in the base.css corner block: this one already scaled its
-    // (bottom-only) radius but never carried corner-shape, same "radius
-    // grew, shape didn't follow" gap as the menu items. Its only non-zero
-    // corners are the bottom two (`border-radius: 0 0 var(...) var(...)`),
-    // so this is the one case that needs the bottom-left probe.
+    // The search bar rounds only its bottom corners. Probe bottom-left to
+    // verify its radius and shape stay aligned with the adjacent card.
     circular: "14px",
     corner: "bottomLeft",
     markup: '<div class="agent-chat__search-bar"><input type="text" /></div>',
@@ -260,7 +255,9 @@ async function probeCorners(browser: Browser, fixtureFile: string): Promise<Corn
             const style = getComputedStyle(element);
             const radius =
               corner === "bottomLeft" ? style.borderBottomLeftRadius : style.borderTopLeftRadius;
-            return [selector, { radius, shape: style.getPropertyValue("corner-shape") }];
+            const shape = style.getPropertyValue("corner-shape");
+            // Browsers serialize the same circular corner as round or superellipse(1).
+            return [selector, { radius, shape: shape === "superellipse(1)" ? "round" : shape }];
           }),
         );
       },
