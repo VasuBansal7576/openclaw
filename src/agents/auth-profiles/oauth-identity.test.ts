@@ -65,7 +65,7 @@ describe("isSafeToCopyOAuthIdentity (unified copy gate, used for mirror and adop
     ["public and enterprise", undefined, "acme.ghe.com", false],
     [
       "same host with URL transport details",
-      "http://user:pass@acme.ghe.com:443/path?q=1",
+      "http://fixture-user@acme.ghe.com:443/path?q=1",
       "acme.ghe.com",
       true,
     ],
