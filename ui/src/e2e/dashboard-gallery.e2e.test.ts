@@ -124,6 +124,12 @@ suite.define(() => {
               },
             ],
           },
+          "sessions.resolve": {
+            ok: true,
+            key: selectedSessionKey,
+            displayName: "Release health",
+            boardFace: "dashboard",
+          },
           "sessions.list": {
             cases: [
               {
