@@ -78,6 +78,32 @@ async function expectOpenFailure(page: Page, message: string): Promise<void> {
 }
 
 suite.define(() => {
+  it("announces when the host opener succeeds", async () => {
+    await suite.withPage({ serviceWorkers: "block" }, async ({ page }) => {
+      await openRawSettings(page, { ok: true, path: configPath });
+
+      if (captureProof) {
+        const proofPath = path.join(
+          createControlUiE2eArtifactDir("config-open-file-feedback"),
+          "before.png",
+        );
+        await page.screenshot({ animations: "disabled", fullPage: true, path: proofPath });
+      }
+
+      await page.getByRole("button", { name: "Open", exact: true }).click();
+
+      const status = page.getByRole("status").filter({ hasText: "Configuration file opened" });
+      await expect.poll(() => status.count()).toBe(1);
+      if (captureProof) {
+        const proofPath = path.join(
+          createControlUiE2eArtifactDir("config-open-file-feedback"),
+          "success-after.png",
+        );
+        await page.screenshot({ animations: "disabled", fullPage: true, path: proofPath });
+      }
+    });
+  });
+
   it("announces the path fallback when the host opener returns a failure", async () => {
     await suite.withPage({ serviceWorkers: "block" }, async ({ page }) => {
       await openRawSettings(page, {

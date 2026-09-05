@@ -680,7 +680,9 @@ export async function openConfigFile(state: RuntimeConfigState): Promise<void> {
         formatUiExternalText(res.error, "Failed to open config file"),
         res.path || state.configSnapshot?.path,
       );
+      return;
     }
+    showToast({ message: "Configuration file opened on Gateway host." });
   } catch (err) {
     await publishFailure(formatUiError(err), state.configSnapshot?.path);
   }
