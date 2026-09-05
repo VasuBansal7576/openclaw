@@ -1,0 +1,17 @@
+{
+  "command": [
+    "/Users/vasu/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node",
+    "--import",
+    "/private/tmp/openclaw-oauth-baseline-receipts-20260905/node_modules/tsx/dist/loader.mjs",
+    "/private/tmp/openclaw-oauth-evidence-20260905/doctor-repro.mts"
+  ],
+  "cwd": "/private/tmp/openclaw-oauth-baseline-receipts-20260905",
+  "environment": {
+    "OPENCLAW_SOURCE": "/private/tmp/openclaw-oauth-baseline-receipts-20260905",
+    "OPENCLAW_GIT_REVISION": "eec37f21426a26fae17ade5250e98274bfc23249",
+    "OPENCLAW_MAIN_DOMAIN": "other.ghe.com"
+  },
+  "exitCode": 0,
+  "capturedAt": "2026-09-05T13:42:31.303464+00:00",
+  "scriptSha256": "19f5df2b1a8fb1a5f3acf1c0425dc2cf084250cf80327f05d64467f664a00939"
+}

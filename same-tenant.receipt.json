@@ -1,0 +1,17 @@
+{
+  "command": [
+    "/Users/vasu/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node",
+    "--import",
+    "/private/tmp/openclaw-oauth-eec-isolated-20260905/node_modules/tsx/dist/loader.mjs",
+    "/private/tmp/openclaw-oauth-evidence-20260905/doctor-repro.mts"
+  ],
+  "cwd": "/private/tmp/openclaw-oauth-eec-isolated-20260905",
+  "environment": {
+    "OPENCLAW_SOURCE": "/private/tmp/openclaw-oauth-eec-isolated-20260905",
+    "OPENCLAW_GIT_REVISION": "d6fc4e905840e6c08bbe838c4c8f86134a139891",
+    "OPENCLAW_MAIN_DOMAIN": "https://acme.ghe.com/"
+  },
+  "exitCode": 0,
+  "capturedAt": "2026-09-05T13:42:43.081754+00:00",
+  "scriptSha256": "19f5df2b1a8fb1a5f3acf1c0425dc2cf084250cf80327f05d64467f664a00939"
+}
