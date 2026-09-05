@@ -2,6 +2,7 @@ import { ErrorCodes } from "@openclaw/gateway-client/browser";
 import { asNullableRecord as asConfigRecord } from "@openclaw/normalization-core/record-coerce";
 import { GatewayRequestError, type GatewayBrowserClient } from "../../api/gateway.ts";
 import type { ConfigSchemaResponse, ConfigSnapshot } from "../../api/types.ts";
+import { t } from "../../i18n/index.ts";
 import { copyToClipboard } from "../clipboard.ts";
 import { serializeConfigForm } from "../config-form-utils.ts";
 import { formatUiError, formatUiExternalText } from "../format-error.ts";
@@ -682,7 +683,7 @@ export async function openConfigFile(state: RuntimeConfigState): Promise<void> {
       );
       return;
     }
-    showToast({ message: "Configuration file opened on Gateway host." });
+    showToast({ message: t("configView.fileOpenedOnGateway") });
   } catch (err) {
     await publishFailure(formatUiError(err), state.configSnapshot?.path);
   }

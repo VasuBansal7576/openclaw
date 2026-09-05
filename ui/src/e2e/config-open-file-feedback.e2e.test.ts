@@ -81,24 +81,26 @@ suite.define(() => {
   it("announces when the host opener succeeds", async () => {
     await suite.withPage({ serviceWorkers: "block" }, async ({ page }) => {
       await openRawSettings(page, { ok: true, path: configPath });
-
-      if (captureProof) {
-        const proofPath = path.join(
-          createControlUiE2eArtifactDir("config-open-file-feedback"),
-          "before.png",
-        );
+      const proofDir = captureProof
+        ? createControlUiE2eArtifactDir("config-open-file-feedback")
+        : null;
+      if (proofDir) {
+        const proofPath = path.join(proofDir, "initial.png");
         await page.screenshot({ animations: "disabled", fullPage: true, path: proofPath });
       }
 
       await page.getByRole("button", { name: "Open", exact: true }).click();
 
-      const status = page.getByRole("status").filter({ hasText: "Configuration file opened" });
+      const status = page
+        .getByRole("status")
+        .filter({ hasText: "Configuration file opened on Gateway host." });
       await expect.poll(() => status.count()).toBe(1);
-      if (captureProof) {
-        const proofPath = path.join(
-          createControlUiE2eArtifactDir("config-open-file-feedback"),
-          "success-after.png",
-        );
+      expect(await status.textContent()).not.toContain(configPath);
+      expect(await page.evaluate(() => Reflect.get(globalThis, "configOpenFileCopied"))).toEqual(
+        [],
+      );
+      if (proofDir) {
+        const proofPath = path.join(proofDir, "success-after.png");
         await page.screenshot({ animations: "disabled", fullPage: true, path: proofPath });
       }
     });
