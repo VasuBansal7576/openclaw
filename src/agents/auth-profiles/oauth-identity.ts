@@ -6,6 +6,39 @@
 import { asDateTimestampMs } from "@openclaw/normalization-core/number-coercion";
 import type { AuthProfileCredential, OAuthCredential } from "./types.js";
 
+function normalizeGithubCopilotRoutingScope(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return "github.com";
+  }
+  try {
+    const parsed = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === "github.com" || /^[a-z0-9-]+\.ghe\.com$/.test(hostname)) {
+      return hostname;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Returns whether OAuth credentials target the same provider-owned tenant. */
+export function isSafeToCopyOAuthRoutingScope(
+  existing: Pick<OAuthCredential, "provider" | "enterpriseUrl">,
+  incoming: Pick<OAuthCredential, "provider" | "enterpriseUrl">,
+): boolean {
+  if (existing.provider !== incoming.provider) {
+    return false;
+  }
+  if (existing.provider !== "github-copilot") {
+    return true;
+  }
+  const existingScope = normalizeGithubCopilotRoutingScope(existing.enterpriseUrl);
+  const incomingScope = normalizeGithubCopilotRoutingScope(incoming.enterpriseUrl);
+  return existingScope !== undefined && existingScope === incomingScope;
+}
+
 /** Normalize account-id style identity tokens for exact comparison. */
 export function normalizeAuthIdentityToken(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
@@ -23,9 +56,21 @@ export function normalizeAuthEmailToken(value: string | undefined): string | und
  * - adopt: main-agent store -> sub-agent store
  */
 export function isSafeToCopyOAuthIdentity(
-  existing: Pick<OAuthCredential, "accountId" | "email">,
-  incoming: Pick<OAuthCredential, "accountId" | "email">,
+  existing: Pick<OAuthCredential, "accountId" | "email"> &
+    Partial<Pick<OAuthCredential, "provider" | "enterpriseUrl">>,
+  incoming: Pick<OAuthCredential, "accountId" | "email"> &
+    Partial<Pick<OAuthCredential, "provider" | "enterpriseUrl">>,
 ): boolean {
+  if (
+    existing.provider !== undefined &&
+    incoming.provider !== undefined &&
+    !isSafeToCopyOAuthRoutingScope(
+      { provider: existing.provider, enterpriseUrl: existing.enterpriseUrl },
+      { provider: incoming.provider, enterpriseUrl: incoming.enterpriseUrl },
+    )
+  ) {
+    return false;
+  }
   const aAcct = normalizeAuthIdentityToken(existing.accountId);
   const bAcct = normalizeAuthIdentityToken(incoming.accountId);
   const aEmail = normalizeAuthEmailToken(existing.email);

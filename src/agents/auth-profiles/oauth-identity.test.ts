@@ -6,6 +6,7 @@
 import { MAX_DATE_TIMESTAMP_MS } from "@openclaw/normalization-core/number-coercion";
 import { describe, expect, it } from "vitest";
 import {
+  isSafeToCopyOAuthRoutingScope,
   isSafeToCopyOAuthIdentity,
   normalizeAuthEmailToken,
   normalizeAuthIdentityToken,
@@ -56,6 +57,39 @@ describe("normalizeAuthEmailToken", () => {
 // ---------------------------------------------------------------------------
 
 describe("isSafeToCopyOAuthIdentity (unified copy gate, used for mirror and adopt)", () => {
+  it.each([
+    ["public defaults", undefined, undefined, true],
+    ["public explicit URL", undefined, "https://github.com/", true],
+    ["same enterprise host", "HTTPS://ACME.GHE.COM/", "acme.ghe.com", true],
+    ["different enterprise hosts", "acme.ghe.com", "other.ghe.com", false],
+    ["public and enterprise", undefined, "acme.ghe.com", false],
+    [
+      "same host with URL transport details",
+      "http://user:pass@acme.ghe.com:443/path?q=1",
+      "acme.ghe.com",
+      true,
+    ],
+    ["unsupported host", "attacker.example", "attacker.example", false],
+    ["malformed URL", "https://[broken", "https://[broken", false],
+    ["trailing dot is unsupported by provider", "acme.ghe.com.", "acme.ghe.com", false],
+  ])("keeps GitHub Copilot routing scope isolated: %s", (_name, existing, incoming, expected) => {
+    expect(
+      isSafeToCopyOAuthRoutingScope(
+        { provider: "github-copilot", enterpriseUrl: existing },
+        { provider: "github-copilot", enterpriseUrl: incoming },
+      ),
+    ).toBe(expected);
+  });
+
+  it("rejects identity-less cross-tenant credentials even when identity adoption is otherwise allowed", () => {
+    expect(
+      isSafeToCopyOAuthIdentity(
+        { provider: "github-copilot", enterpriseUrl: "acme.ghe.com" },
+        { provider: "github-copilot", enterpriseUrl: "other.ghe.com", accountId: "acct-main" },
+      ),
+    ).toBe(false);
+  });
+
   describe("positive matches", () => {
     it("accepts matching accountIds", () => {
       expect(isSafeToCopyOAuthIdentity({ accountId: "x" }, { accountId: "x" })).toBe(true);
