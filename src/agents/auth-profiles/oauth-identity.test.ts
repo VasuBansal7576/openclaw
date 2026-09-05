@@ -4,7 +4,8 @@
  * credentials cannot poison another auth store.
  */
 import { MAX_DATE_TIMESTAMP_MS } from "@openclaw/normalization-core/number-coercion";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import * as facadeLoader from "../../plugin-sdk/facade-loader.js";
 import {
   isSafeToCopyOAuthRoutingScope,
   isSafeToCopyOAuthIdentity,
@@ -57,6 +58,27 @@ describe("normalizeAuthEmailToken", () => {
 // ---------------------------------------------------------------------------
 
 describe("isSafeToCopyOAuthIdentity (unified copy gate, used for mirror and adopt)", () => {
+  it("preserves Copilot credentials when the shipped policy artifact is missing", () => {
+    const load = vi
+      .spyOn(facadeLoader, "loadBundledPluginPublicSurfaceModuleSyncCore")
+      .mockImplementation(() => {
+        throw new facadeLoader.MissingPublicSurfaceError("Missing Copilot policy artifact");
+      });
+    try {
+      expect(
+        isSafeToCopyOAuthRoutingScope(
+          { provider: "github-copilot", enterpriseUrl: "acme.ghe.com" },
+          { provider: "github-copilot", enterpriseUrl: "acme.ghe.com" },
+        ),
+      ).toBe(false);
+      expect(isSafeToCopyOAuthRoutingScope({ provider: "openai" }, { provider: "openai" })).toBe(
+        true,
+      );
+    } finally {
+      load.mockRestore();
+    }
+  });
+
   it.each([
     ["public defaults", undefined, undefined, true],
     ["public explicit URL", undefined, "https://github.com/", true],

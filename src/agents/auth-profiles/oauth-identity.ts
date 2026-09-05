@@ -4,8 +4,15 @@
  * overwrite a different account's local auth state.
  */
 import { asDateTimestampMs } from "@openclaw/normalization-core/number-coercion";
-import { normalizeGithubCopilotOAuthScope } from "../../../extensions/github-copilot/api.js";
+import {
+  loadBundledPluginPublicSurfaceModuleSyncCore,
+  MissingPublicSurfaceError,
+} from "../../plugin-sdk/facade-loader.js";
 import type { AuthProfileCredential, OAuthCredential } from "./types.js";
+
+type GithubCopilotOAuthSurface = {
+  normalizeGithubCopilotOAuthScope: (raw: string | undefined) => string | undefined;
+};
 
 /** Returns whether OAuth credentials target the same provider-owned tenant. */
 export function isSafeToCopyOAuthRoutingScope(
@@ -18,6 +25,22 @@ export function isSafeToCopyOAuthRoutingScope(
   if (existing.provider !== "github-copilot") {
     return true;
   }
+  // Credential identity uses shipped policy even when plugin runtime is disabled.
+  // Never select a replacement policy from an environment-controlled plugin root.
+  let surface: GithubCopilotOAuthSurface;
+  try {
+    surface = loadBundledPluginPublicSurfaceModuleSyncCore<GithubCopilotOAuthSurface>({
+      dirName: "github-copilot",
+      artifactBasename: "api.js",
+      env: {},
+    });
+  } catch (error) {
+    if (error instanceof MissingPublicSurfaceError) {
+      return false;
+    }
+    throw error;
+  }
+  const { normalizeGithubCopilotOAuthScope } = surface;
   const existingScope = normalizeGithubCopilotOAuthScope(existing.enterpriseUrl);
   const incomingScope = normalizeGithubCopilotOAuthScope(incoming.enterpriseUrl);
   return existingScope !== undefined && existingScope === incomingScope;
