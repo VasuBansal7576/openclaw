@@ -4,24 +4,8 @@
  * overwrite a different account's local auth state.
  */
 import { asDateTimestampMs } from "@openclaw/normalization-core/number-coercion";
+import { normalizeGithubCopilotOAuthScope } from "../../../extensions/github-copilot/api.js";
 import type { AuthProfileCredential, OAuthCredential } from "./types.js";
-
-function normalizeGithubCopilotRoutingScope(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  if (!trimmed) {
-    return "github.com";
-  }
-  try {
-    const parsed = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
-    const hostname = parsed.hostname.toLowerCase();
-    if (hostname === "github.com" || /^[a-z0-9-]+\.ghe\.com$/.test(hostname)) {
-      return hostname;
-    }
-    return undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 /** Returns whether OAuth credentials target the same provider-owned tenant. */
 export function isSafeToCopyOAuthRoutingScope(
@@ -34,8 +18,8 @@ export function isSafeToCopyOAuthRoutingScope(
   if (existing.provider !== "github-copilot") {
     return true;
   }
-  const existingScope = normalizeGithubCopilotRoutingScope(existing.enterpriseUrl);
-  const incomingScope = normalizeGithubCopilotRoutingScope(incoming.enterpriseUrl);
+  const existingScope = normalizeGithubCopilotOAuthScope(existing.enterpriseUrl);
+  const incomingScope = normalizeGithubCopilotOAuthScope(incoming.enterpriseUrl);
   return existingScope !== undefined && existingScope === incomingScope;
 }
 
