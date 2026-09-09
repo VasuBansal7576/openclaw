@@ -1,8 +1,10 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createDeferred } from "../../test/helpers/promise.js";
 import { CodeModeHeadlessAbortError, CodeModeHeadlessTimeoutError } from "./code-mode-worker.js";
 import { runCodeModeScriptHeadless } from "./code-mode.js";
 import {
   createHeadlessCodeModeHarness,
+  pluginToolWithExecute,
   resetCodeModeTestState,
   testing,
 } from "./code-mode.test-support.js";
@@ -12,8 +14,41 @@ describe("headless Code Mode cancellation", () => {
     try {
       expect(testing.activeRuns.size).toBe(0);
     } finally {
+      vi.useRealTimers();
       resetCodeModeTestState();
     }
+  });
+
+  it("classifies a wall-clock expiry observed during a real tool leg as timeout", async () => {
+    // Only the timer clock is virtual here: the production headless entry, its deadline
+    // scope, a real worker and a real tool all run unchanged. performance.now() keeps
+    // advancing, so the scope observes its own deadline inside the host exchange before
+    // the abort timer this advance would reach - the ordering the classification lost.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const wallClockMs = 15_000;
+    const toolStarted = createDeferred<void>();
+    const slowLeg = pluginToolWithExecute("slow_leg", "Never settles on its own", async () => {
+      toolStarted.resolve();
+      return await new Promise<never>(() => {});
+    });
+    const startedAt = performance.now();
+
+    const resultPromise = runCodeModeScriptHeadless({
+      ctx: createHeadlessCodeModeHarness([slowLeg]),
+      code: "await slow_leg({}); return true;",
+      wallClockMs,
+    });
+    await toolStarted.promise;
+    const realElapsedMs = performance.now() - startedAt;
+    await vi.advanceTimersByTimeAsync(wallClockMs - 50);
+    const result = await resultPromise;
+
+    expect(realElapsedMs).toBeGreaterThan(50);
+    expect(result, JSON.stringify(result)).toMatchObject({
+      status: "failed",
+      code: "timeout",
+      toolCallCount: 1,
+    });
   });
 
   it("completes after canceling a guest timer across two resumes", async () => {
