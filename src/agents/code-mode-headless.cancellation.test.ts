@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { CodeModeHeadlessAbortError, CodeModeHeadlessTimeoutError } from "./code-mode-worker.js";
 import { runCodeModeScriptHeadless } from "./code-mode.js";
 import {
   createHeadlessCodeModeHarness,
@@ -78,4 +79,50 @@ describe("headless Code Mode cancellation", () => {
       error: "code mode execution aborted",
     });
   });
+
+  it.each([
+    {
+      name: "deadline",
+      createError: () => new CodeModeHeadlessTimeoutError(),
+      code: "timeout",
+      error: "code mode timeout exceeded",
+    },
+    {
+      name: "abort",
+      createError: () => new CodeModeHeadlessAbortError(),
+      code: "aborted",
+      error: "code mode execution aborted",
+    },
+  ])(
+    "classifies a host exchange that rejects with the scope $name error before its signal settles",
+    async ({ createError, code, error }) => {
+      const ctx = createHeadlessCodeModeHarness();
+      const config = testing.resolveCodeModeHeadlessConfig(ctx);
+      // The scope observes its own deadline inside the host exchange, so the run
+      // can reject before the abort controller that shares that deadline settles.
+      const scopeSignal = new AbortController().signal;
+
+      const result = await testing.runCodeModeWorker(
+        {
+          kind: "exec",
+          source: "await new Promise((resolve) => setTimeout(resolve, 0)); return 1;",
+          config,
+          catalog: [],
+          apiFiles: [],
+          namespaces: [],
+        },
+        config.timeoutMs + 2000,
+        undefined,
+        scopeSignal,
+        {
+          onBoundary: async () => {
+            throw createError();
+          },
+        },
+      );
+
+      expect(scopeSignal.aborted).toBe(false);
+      expect(result, JSON.stringify(result)).toMatchObject({ status: "failed", code, error });
+    },
+  );
 });
