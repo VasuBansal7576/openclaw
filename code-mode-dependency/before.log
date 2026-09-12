@@ -1,0 +1,97 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.0 [39m[90m/repo[39m
+
+ [31m×[39m [30m[45m agents-core [49m[39m src/agents/code-mode-headless.cancellation.test.ts[2m > [22mheadless Code Mode cancellation[2m > [22mclassifies a wall-clock expiry observed during a real tool leg as timeout[33m 406[2mms[22m[39m
+[31m   → {"status":"failed","code":"internal_error","toolCallCount":2,"output":[],"error":"code mode headless wall-clock timeout exceeded"}: expected { status: 'failed', …(4) } to match object { status: 'failed', …(2) }
+(2 matching properties omitted from actual)[39m
+ [32m✓[39m [30m[45m agents-core [49m[39m src/agents/code-mode-headless.cancellation.test.ts[2m > [22mheadless Code Mode cancellation[2m > [22mcompletes after canceling a guest timer across two resumes[32m 124[2mms[22m[39m
+ [32m✓[39m [30m[45m agents-core [49m[39m src/agents/code-mode-headless.cancellation.test.ts[2m > [22mheadless Code Mode cancellation[2m > [22mterminates an in-flight worker leg when aborted[32m 105[2mms[22m[39m
+ [32m✓[39m [30m[45m agents-core [49m[39m src/agents/code-mode-headless.cancellation.test.ts[2m > [22mheadless Code Mode cancellation[2m > [22mclassifies caller aborts before the worker leg as aborted[32m 2[2mms[22m[39m
+ [31m×[39m [30m[45m agents-core [49m[39m src/agents/code-mode-headless.cancellation.test.ts[2m > [22mheadless Code Mode cancellation[2m > [22mclassifies a host exchange that rejects with the scope deadline error before its signal settles[32m 109[2mms[22m[39m
+[31m   → {"status":"failed","error":"code mode headless wall-clock timeout exceeded","code":"internal_error","failurePhase":"host","bridgeDispatchStarted":false,"output":{"count":0,"source":{"kind":"complete","json":"[]"}}}: expected { status: 'failed', …(5) } to match object { status: 'failed', …(2) }
+(5 matching properties omitted from actual)[39m
+ [31m×[39m [30m[45m agents-core [49m[39m src/agents/code-mode-headless.cancellation.test.ts[2m > [22mheadless Code Mode cancellation[2m > [22mclassifies a host exchange that rejects with the scope abort error before its signal settles[32m 107[2mms[22m[39m
+[31m   → {"status":"failed","error":"code mode execution aborted","code":"internal_error","failurePhase":"host","bridgeDispatchStarted":false,"output":{"count":0,"source":{"kind":"complete","json":"[]"}}}: expected { status: 'failed', …(5) } to match object { status: 'failed', …(2) }
+(5 matching properties omitted from actual)[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 3 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m [30m[45m agents-core [49m[39m src/agents/code-mode-headless.cancellation.test.ts[2m > [22mheadless Code Mode cancellation[2m > [22mclassifies a wall-clock expiry observed during a real tool leg as timeout
+[31m[1mAssertionError[22m: {"status":"failed","code":"internal_error","toolCallCount":2,"output":[],"error":"code mode headless wall-clock timeout exceeded"}: expected { status: 'failed', …(4) } to match object { status: 'failed', …(2) }
+(2 matching properties omitted from actual)[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[32m-   "code": "timeout",[39m
+[31m+   "code": "internal_error",[39m
+[2m    "status": "failed",[22m
+[2m    "toolCallCount": 2,[22m
+[2m  }[22m
+
+[36m [2m❯[22m src/agents/code-mode-headless.cancellation.test.ts:[2m61:44[22m[39m
+    [90m 59|[39m     const result = await resultPromise;
+    [90m 60|[39m
+    [90m 61|[39m     expect(result, JSON.stringify(result)).toMatchObject({
+    [90m   |[39m                                            [31m^[39m
+    [90m 62|[39m       status: "failed",
+    [90m 63|[39m       code: "timeout",
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m [30m[45m agents-core [49m[39m src/agents/code-mode-headless.cancellation.test.ts[2m > [22mheadless Code Mode cancellation[2m > [22mclassifies a host exchange that rejects with the scope deadline error before its signal settles
+[31m[1mAssertionError[22m: {"status":"failed","error":"code mode headless wall-clock timeout exceeded","code":"internal_error","failurePhase":"host","bridgeDispatchStarted":false,"output":{"count":0,"source":{"kind":"complete","json":"[]"}}}: expected { status: 'failed', …(5) } to match object { status: 'failed', …(2) }
+(5 matching properties omitted from actual)[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[32m-   "code": "timeout",[39m
+[32m-   "error": "code mode timeout exceeded",[39m
+[31m+   "code": "internal_error",[39m
+[31m+   "error": "code mode headless wall-clock timeout exceeded",[39m
+[2m    "status": "failed",[22m
+[2m  }[22m
+
+[36m [2m❯[22m src/agents/code-mode-headless.cancellation.test.ts:[2m174:46[22m[39m
+    [90m172|[39m
+    [90m173|[39m       expect(scopeSignal.aborted).toBe(false);
+    [90m174|[39m       expect(result, JSON.stringify(result)).toMatchObject({ status: "…
+    [90m   |[39m                                              [31m^[39m
+    [90m175|[39m     },
+    [90m176|[39m   );
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯[22m[39m
+
+
+[41m[1m FAIL [22m[49m [30m[45m agents-core [49m[39m src/agents/code-mode-headless.cancellation.test.ts[2m > [22mheadless Code Mode cancellation[2m > [22mclassifies a host exchange that rejects with the scope abort error before its signal settles
+[31m[1mAssertionError[22m: {"status":"failed","error":"code mode execution aborted","code":"internal_error","failurePhase":"host","bridgeDispatchStarted":false,"output":{"count":0,"source":{"kind":"complete","json":"[]"}}}: expected { status: 'failed', …(5) } to match object { status: 'failed', …(2) }
+(5 matching properties omitted from actual)[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[32m-   "code": "aborted",[39m
+[31m+   "code": "internal_error",[39m
+[2m    "error": "code mode execution aborted",[22m
+[2m    "status": "failed",[22m
+[2m  }[22m
+
+[36m [2m❯[22m src/agents/code-mode-headless.cancellation.test.ts:[2m174:46[22m[39m
+    [90m172|[39m
+    [90m173|[39m       expect(scopeSignal.aborted).toBe(false);
+    [90m174|[39m       expect(result, JSON.stringify(result)).toMatchObject({ status: "…
+    [90m   |[39m                                              [31m^[39m
+    [90m175|[39m     },
+    [90m176|[39m   );
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯[22m[39m
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m3 failed[39m[22m[2m | [22m[1m[32m3 passed[39m[22m[90m (6)[39m
+[2m   Start at [22m 23:32:11
+[2m   Duration [22m 4.92s[2m (transform 44%, import 28%, tests 18%, worker 7%, setup 2%)[22m
+
