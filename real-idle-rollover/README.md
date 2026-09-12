@@ -7,3 +7,7 @@ Real initSessionState, idle expiry, SQLite session/transcript storage and intern
 Before: fails with closed async scope, no archive. After: archive contents match retired ID, memory contains original text, one hook owner remains until release, all roots finish zero. Browser-cleanup may concurrently own another root; test asserts the hook-specific owner exactly, not total global count. Both observed runs finish dispatch before cleanup. This evidence harness is not a production regression test and requires stronger early-failure finally cleanup before promotion.
 
 Node24.21.0 LinuxARM64 in clean Docker. No host mounts; capdropall/no-new-privileges; frozen pnpm12.3.4 install ignore-scripts, then network disconnected. No real model, user credentials, or provider/channel requests. Independent read-only review found no blocking false-positive; added exact artifact-content assertion before final runs.
+
+## Accepted CI-fix integration rerun
+
+The same harness passed again on exact PR head `03ca2382874f813d19926dd5cfb10701c7caa96f`, after merging accepted upstream UI and shard fixes through `d569fcdba8bd04b9ae6787af432a6fef409cade7`. See `after-03ca.log`. This is a new candidate run, not a new baseline run. Docker used init, network none, no mounts, and the same frozen dependency installation. No assertions or production files were changed for this rerun.
