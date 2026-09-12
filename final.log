@@ -1,0 +1,6 @@
+ RUN  v5.0.0 /lab
+ ✓ src/hooks/autoreset-regression.test.ts (3 tests) 41ms
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  19:05:02
+   Duration  268ms (transform 58%, tests 25%, import 15%, worker 2%)

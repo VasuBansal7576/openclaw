@@ -1,0 +1,49 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.0 [39m[90m/lab[39m
+
+ [31m❯[39m src/hooks/autoreset-regression.test.ts [2m([22m[2m3 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[32m 46[2mms[22m[39m
+   [31m❯[39m automatic reset hook lifetime [2m(3)[22m
+[31m     [31m×[31m completes delayed tracked work after the triggering requester closes[39m[32m 20[2mms[22m[39m
+     [32m✓[39m owns and releases delayed hook work when there is no parent request[32m 12[2mms[22m[39m
+[31m     [31m×[31m releases work and continues dispatch when a delayed hook throws[39m[32m 12[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 2 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/hooks/autoreset-regression.test.ts[2m > [22mautomatic reset hook lifetime[2m > [22mcompletes delayed tracked work after the triggering requester closes
+[31m[1mAssertionError[22m: expected "vi.fn()" to be called once with arguments: [][90m
+
+Number of calls: [1m0[22m
+[31m[39m
+[36m [2m❯[22m exercise src/hooks/autoreset-regression.test.ts:[2m133:22[22m[39m
+    [90m131|[39m         expect(getActiveGatewayRootWorkCount()).toBe(0);
+    [90m132|[39m       }, { timeout: 2_000, interval: 10 });
+    [90m133|[39m       expect(effect).toHaveBeenCalledExactlyOnceWith();
+    [90m   |[39m                      [31m^[39m
+    [90m134|[39m       if (options.throws) {
+    [90m135|[39m         expect(logs.error).toHaveBeenCalledExactlyOnceWith(
+[90m [2m❯[22m src/hooks/autoreset-regression.test.ts:[2m164:5[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/hooks/autoreset-regression.test.ts[2m > [22mautomatic reset hook lifetime[2m > [22mreleases work and continues dispatch when a delayed hook throws
+[31m[1mAssertionError[22m: expected "vi.fn()" to be called once with arguments: [][90m
+
+Number of calls: [1m0[22m
+[31m[39m
+[36m [2m❯[22m exercise src/hooks/autoreset-regression.test.ts:[2m133:22[22m[39m
+    [90m131|[39m         expect(getActiveGatewayRootWorkCount()).toBe(0);
+    [90m132|[39m       }, { timeout: 2_000, interval: 10 });
+    [90m133|[39m       expect(effect).toHaveBeenCalledExactlyOnceWith();
+    [90m   |[39m                      [31m^[39m
+    [90m134|[39m       if (options.throws) {
+    [90m135|[39m         expect(logs.error).toHaveBeenCalledExactlyOnceWith(
+[90m [2m❯[22m src/hooks/autoreset-regression.test.ts:[2m172:5[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m1 passed[39m[22m[90m (3)[39m
+[2m   Start at [22m 18:58:48
+[2m   Duration [22m 295ms[2m (transform 58%, tests 26%, import 14%, worker 2%)[22m
+

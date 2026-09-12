@@ -1,0 +1,40 @@
+{
+  "main": "948e897faeaaf3d4ee700a3e0b382c2a474589af",
+  "helperPr": 144801,
+  "helperHead": "6f6370415df781bc784380706969c076e81d22c4",
+  "files": [
+    {
+      "path": "src/hooks/session-auto-reset.ts",
+      "sha256": "f3a5ab629e559add1de48b43045c8ea93e60cdffec9d255b3ae8b07493fe5b11"
+    },
+    {
+      "path": "src/hooks/internal-hooks.ts",
+      "sha256": "ae44ba5e7e2db63e2e25579b6471e47c18e87277b90f63b058d5ddc781df35af"
+    },
+    {
+      "path": "src/shared/async-work-scope.ts",
+      "sha256": "9de71326d35155b96cd1364846a1a9f5ddb4667c22f5d2a22cdb2205c0346f2b"
+    },
+    {
+      "path": "src/shared/deferred.ts",
+      "sha256": "2fd613018154ee1ab3e43d183d9f0c770d286dfef05562f1493cd9674545b884"
+    },
+    {
+      "path": "src/shared/global-singleton.ts",
+      "sha256": "12de43730df55d0996ceb238616b6d53812a70796d974281b96d260d975c393c"
+    },
+    {
+      "path": "src/infra/abort-signal.ts",
+      "sha256": "684463831c23f8ea320d539fda46f9807efff12e1d134cee3d5b220cb3f2d913"
+    },
+    {
+      "path": "src/process/gateway-work-admission.ts",
+      "sha256": "6dbfe7dde5130550d0e8427b5963ad9fb42d6916710860e466fa41a24c5ea645"
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "73571b25326281d369087f469842c02444fe39faaecebda4d82ed21ff3a1c29d"
+    }
+  ],
+  "helperSha256": "f686b3f821037630f51e4c8377450fe85a330e202d89c939886df865ef920f24"
+}
