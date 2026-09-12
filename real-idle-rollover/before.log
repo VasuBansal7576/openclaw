@@ -1,0 +1,36 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.0 [39m[90m/repo[39m
+
+[90mstdout[2m | src/hooks/reset-runtime-proof.test.ts[2m > [22m[2mreal idle rollover completes delayed archive command and bundled memory capture
+[22m[39mRESET_RUNTIME_RECEIPT {"variant":"base-caller","reason":"idle","retired":"retiring-reset-proof","successor":"retiring-reset-proof","parentClosed":true,"rootsBeforeRelease":2,"holdersBeforeRelease":["hooks:session-auto-reset","session:browser-cleanup"],"rootsAfter":0,"error":"Async work scope is closed","stdout":null,"archived":null,"memoryFiles":["2026-09-12-2257.md"],"memoryHasRetiringText":true,"source":"real initSessionState idle rollover; test-installed delayed archive hook + bundled session-memory; no module mocks"}
+
+ [31m×[39m [30m[42m hooks [49m[39m src/hooks/reset-runtime-proof.test.ts[2m > [22mreal idle rollover completes delayed archive command and bundled memory capture[33m 3743[2mms[22m[39m
+[31m   → expected 'Async work scope is closed' to be null[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m [30m[42m hooks [49m[39m src/hooks/reset-runtime-proof.test.ts[2m > [22mreal idle rollover completes delayed archive command and bundled memory capture
+[31m[1mAssertionError[22m: expected 'Async work scope is closed' to be null[39m
+
+[32m- Expected:[39m
+null
+
+[31m+ Received:[39m
+"Async work scope is closed"
+
+[36m [2m❯[22m src/hooks/reset-runtime-proof.test.ts:[2m74:19[22m[39m
+    [90m 72|[39m     expect(getActiveGatewayRootWorkCount()).toBe(0);
+    [90m 73|[39m     expect(memory.some(s=>s.includes('Retiring session proof'))).toBe(…
+    [90m 74|[39m     expect(error).toBeNull();
+    [90m   |[39m                   [31m^[39m
+    [90m 75|[39m     expect(stdout).toBe('archive-written');
+    [90m 76|[39m     expect(archived).not.toBeNull();
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m   Start at [22m 22:57:20
+[2m   Duration [22m 8.21s[2m (tests 46%, transform 31%, import 20%, worker 2%, setup 1%)[22m
+
