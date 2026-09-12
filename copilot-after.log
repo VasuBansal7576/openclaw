@@ -1,0 +1,25 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.0 [39m[90m/lab[39m
+
+[90mstdout[2m | copilot-proof.test.ts[2m > [22m[2mDoctor repair followed by real Copilot profile resolution (synthetic credentials)[2m > [22m[2mdifferent enterprise tenants
+[22m[39mCOPILOT_PROOF {"scenario":"different enterprise tenants","scanHits":0,"removedProfiles":0,"childPreserved":true,"selectedTokenOwner":"child","selectedDomain":"acme.ghe.com","proofBoundary":"actual Doctor + persisted SQLite + real Copilot credential resolution; no provider network authentication"}
+
+ [32m✓[39m copilot-proof.test.ts[2m > [22mDoctor repair followed by real Copilot profile resolution (synthetic credentials)[2m > [22mdifferent enterprise tenants[33m 775[2mms[22m[39m
+[90mstdout[2m | copilot-proof.test.ts[2m > [22m[2mDoctor repair followed by real Copilot profile resolution (synthetic credentials)[2m > [22m[2msame enterprise tenant URL spelling
+[22m[39mCOPILOT_PROOF {"scenario":"same enterprise tenant URL spelling","scanHits":1,"removedProfiles":1,"childPreserved":false,"selectedTokenOwner":"shared-main","selectedDomain":"acme.ghe.com","proofBoundary":"actual Doctor + persisted SQLite + real Copilot credential resolution; no provider network authentication"}
+
+ [32m✓[39m copilot-proof.test.ts[2m > [22mDoctor repair followed by real Copilot profile resolution (synthetic credentials)[2m > [22msame enterprise tenant URL spelling[32m 264[2mms[22m[39m
+[90mstdout[2m | copilot-proof.test.ts[2m > [22m[2mDoctor repair followed by real Copilot profile resolution (synthetic credentials)[2m > [22m[2mpublic child versus enterprise main
+[22m[39mCOPILOT_PROOF {"scenario":"public child versus enterprise main","scanHits":0,"removedProfiles":0,"childPreserved":true,"selectedTokenOwner":"child","selectedDomain":"github.com","proofBoundary":"actual Doctor + persisted SQLite + real Copilot credential resolution; no provider network authentication"}
+
+ [32m✓[39m copilot-proof.test.ts[2m > [22mDoctor repair followed by real Copilot profile resolution (synthetic credentials)[2m > [22mpublic child versus enterprise main[32m 254[2mms[22m[39m
+[90mstdout[2m | copilot-proof.test.ts[2m > [22m[2mDoctor repair followed by real Copilot profile resolution (synthetic credentials)[2m > [22m[2mequivalent public tenant spellings
+[22m[39mCOPILOT_PROOF {"scenario":"equivalent public tenant spellings","scanHits":1,"removedProfiles":1,"childPreserved":false,"selectedTokenOwner":"shared-main","selectedDomain":"github.com","proofBoundary":"actual Doctor + persisted SQLite + real Copilot credential resolution; no provider network authentication"}
+
+ [32m✓[39m copilot-proof.test.ts[2m > [22mDoctor repair followed by real Copilot profile resolution (synthetic credentials)[2m > [22mequivalent public tenant spellings[32m 241[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m4 passed[39m[22m[90m (4)[39m
+[2m   Start at [22m 20:28:05
+[2m   Duration [22m 5.15s[2m (import 32%, tests 30%, transform 30%, worker 7%)[22m
+

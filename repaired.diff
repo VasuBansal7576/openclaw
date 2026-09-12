@@ -1,0 +1,700 @@
+diff --git a/extensions/github-copilot/api.ts b/extensions/github-copilot/api.ts
+new file mode 100644
+index 00000000000..80c9e1262f4
+--- /dev/null
++++ b/extensions/github-copilot/api.ts
+@@ -0,0 +1,2 @@
++/** Pure provider-owned credential scope policy shared with core auth ownership. */
++export { normalizeGithubCopilotOAuthScope } from "./domain.js";
+diff --git a/extensions/github-copilot/domain.ts b/extensions/github-copilot/domain.ts
+index 47223bf6070..39f0dfcab97 100644
+--- a/extensions/github-copilot/domain.ts
++++ b/extensions/github-copilot/domain.ts
+@@ -26,6 +26,22 @@ export function normalizeGithubCopilotDomain(raw: string | undefined | null): st
+     : PUBLIC_GITHUB_COPILOT_DOMAIN;
+ }
+ 
++/** Normalize legacy OAuth URL/domain spellings without accepting unsupported tenants. */
++export function normalizeGithubCopilotOAuthScope(raw: string | undefined): string | undefined {
++  const trimmed = raw?.trim();
++  if (!trimmed) {
++    return PUBLIC_GITHUB_COPILOT_DOMAIN;
++  }
++  try {
++    const hostname = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`).hostname;
++    return isSupportedGithubCopilotDomain(hostname) && hostname
++      ? normalizeGithubCopilotDomain(hostname)
++      : undefined;
++  } catch {
++    return undefined;
++  }
++}
++
+ function readConfiguredGithubCopilotDomain(config?: OpenClawConfig): string | undefined {
+   const params = config?.models?.providers?.["github-copilot"]?.params;
+   const value = params && typeof params === "object" ? params.githubDomain : undefined;
+diff --git a/extensions/github-copilot/oauth.test.ts b/extensions/github-copilot/oauth.test.ts
+index 87979c809f2..0ec9e4cea6f 100644
+--- a/extensions/github-copilot/oauth.test.ts
++++ b/extensions/github-copilot/oauth.test.ts
+@@ -6,7 +6,7 @@ const runDeviceFlow = vi.hoisted(() => vi.fn<typeof runGitHubCopilotDeviceFlow>(
+ 
+ vi.mock("./login.js", () => ({ runGitHubCopilotDeviceFlow: runDeviceFlow }));
+ 
+-import { loginGithubCopilotOAuth } from "./oauth.js";
++import { formatGithubCopilotApiKey, loginGithubCopilotOAuth } from "./oauth.js";
+ 
+ describe("github-copilot session OAuth adapter", () => {
+   beforeEach(() => {
+@@ -44,7 +44,11 @@ describe("github-copilot session OAuth adapter", () => {
+     expect(onProgress).toHaveBeenCalledWith("Waiting for GitHub authorization...");
+   });
+ 
+-  it("preserves a validated enterprise tenant on the returned credential", async () => {
++  it.each([
++    "https://acme.ghe.com",
++    " HTTPS://ACME.GHE.COM/ ",
++    "http://fixture-user@acme.ghe.com:443/path?q=1",
++  ])("preserves a validated enterprise tenant from %s", async (input) => {
+     runDeviceFlow.mockResolvedValueOnce({
+       status: "authorized",
+       accessToken: "tenant-github-token",
+@@ -53,7 +57,7 @@ describe("github-copilot session OAuth adapter", () => {
+     await expect(
+       loginGithubCopilotOAuth({
+         onAuth: vi.fn(),
+-        onPrompt: vi.fn(async () => "https://acme.ghe.com"),
++        onPrompt: vi.fn(async () => input),
+       }),
+     ).resolves.toMatchObject({
+       access: "tenant-github-token",
+@@ -63,13 +67,21 @@ describe("github-copilot session OAuth adapter", () => {
+     expect(runDeviceFlow).toHaveBeenCalledWith(expect.any(Object), "acme.ghe.com");
+   });
+ 
+-  it("rejects an unsafe enterprise origin before starting the device flow", async () => {
+-    await expect(
+-      loginGithubCopilotOAuth({
+-        onAuth: vi.fn(),
+-        onPrompt: vi.fn(async () => "https://attacker.example"),
+-      }),
+-    ).rejects.toThrow("Unsupported GitHub Enterprise domain");
+-    expect(runDeviceFlow).not.toHaveBeenCalled();
++  it.each(["https://attacker.example", "https://[broken", "acme.ghe.com."])(
++    "rejects unsupported enterprise input %s before device flow",
++    async (input) => {
++      await expect(
++        loginGithubCopilotOAuth({
++          onAuth: vi.fn(),
++          onPrompt: vi.fn(async () => input),
++        }),
++      ).rejects.toThrow("Unsupported GitHub Enterprise domain");
++      expect(runDeviceFlow).not.toHaveBeenCalled();
++    },
++  );
++  it("keeps whitespace-only persisted enterprise metadata invalid when formatting a key", () => {
++    expect(() =>
++      formatGithubCopilotApiKey({ type: "oauth", refresh: "fixture", enterpriseUrl: "  " }),
++    ).toThrow("Unsupported GitHub Enterprise domain");
+   });
+ });
+diff --git a/extensions/github-copilot/oauth.ts b/extensions/github-copilot/oauth.ts
+index 579b913c043..c8253697a7f 100644
+--- a/extensions/github-copilot/oauth.ts
++++ b/extensions/github-copilot/oauth.ts
+@@ -8,33 +8,21 @@ import type {
+ import {
+   isSupportedGithubCopilotDomain,
+   normalizeGithubCopilotDomain,
++  normalizeGithubCopilotOAuthScope,
+   PUBLIC_GITHUB_COPILOT_DOMAIN,
+ } from "./domain.js";
+ import { runGitHubCopilotDeviceFlow } from "./login.js";
+ 
+ const LEGACY_OAUTH_KEY_PREFIX = "openclaw-github-copilot-oauth:v1:";
+ 
+-function parseLegacyEnterpriseInput(raw: string): string | null {
+-  const trimmed = raw.trim();
+-  if (!trimmed) {
+-    return null;
+-  }
+-  try {
+-    const parsed = trimmed.includes("://") ? new URL(trimmed) : new URL(`https://${trimmed}`);
+-    return parsed.hostname.toLowerCase();
+-  } catch {
+-    return null;
+-  }
+-}
+-
+ function requireSupportedEnterpriseDomain(raw: string): string {
+-  const domain = parseLegacyEnterpriseInput(raw);
+-  if (!domain || !isSupportedGithubCopilotDomain(domain)) {
++  const domain = raw.trim() ? normalizeGithubCopilotOAuthScope(raw) : undefined;
++  if (!domain) {
+     throw new Error(
+       `Unsupported GitHub Enterprise domain "${raw.trim()}". Use github.com or a *.ghe.com data-residency tenant.`,
+     );
+   }
+-  return normalizeGithubCopilotDomain(domain);
++  return domain;
+ }
+ 
+ export async function loginGithubCopilotOAuth(
+diff --git a/src/agents/auth-profiles/oauth-identity.test.ts b/src/agents/auth-profiles/oauth-identity.test.ts
+index 83297304d54..884296a0833 100644
+--- a/src/agents/auth-profiles/oauth-identity.test.ts
++++ b/src/agents/auth-profiles/oauth-identity.test.ts
+@@ -4,9 +4,11 @@
+  * credentials cannot poison another auth store.
+  */
+ import { MAX_DATE_TIMESTAMP_MS } from "@openclaw/normalization-core/number-coercion";
+-import { describe, expect, it } from "vitest";
++import { describe, expect, it, vi } from "vitest";
++import * as facadeLoader from "../../plugin-sdk/facade-loader.js";
+ import { createApiKeyCredential } from "./credential-fixtures.test-support.js";
+ import {
++  isSafeToCopyOAuthRoutingScope,
+   isSafeToCopyOAuthIdentity,
+   normalizeAuthEmailToken,
+   normalizeAuthIdentityToken,
+@@ -57,6 +59,60 @@ describe("normalizeAuthEmailToken", () => {
+ // ---------------------------------------------------------------------------
+ 
+ describe("isSafeToCopyOAuthIdentity (unified copy gate, used for mirror and adopt)", () => {
++  it("preserves Copilot credentials when the shipped policy artifact is missing", () => {
++    const load = vi
++      .spyOn(facadeLoader, "loadBundledPluginPublicSurfaceModuleSyncCore")
++      .mockImplementation(() => {
++        throw new facadeLoader.MissingPublicSurfaceError("Missing Copilot policy artifact");
++      });
++    try {
++      expect(
++        isSafeToCopyOAuthRoutingScope(
++          { provider: "github-copilot", enterpriseUrl: "acme.ghe.com" },
++          { provider: "github-copilot", enterpriseUrl: "acme.ghe.com" },
++        ),
++      ).toBe(false);
++      expect(isSafeToCopyOAuthRoutingScope({ provider: "openai" }, { provider: "openai" })).toBe(
++        true,
++      );
++    } finally {
++      load.mockRestore();
++    }
++  });
++
++  it.each([
++    ["public defaults", undefined, undefined, true],
++    ["public explicit URL", undefined, "https://github.com/", true],
++    ["same enterprise host", "HTTPS://ACME.GHE.COM/", "acme.ghe.com", true],
++    ["different enterprise hosts", "acme.ghe.com", "other.ghe.com", false],
++    ["public and enterprise", undefined, "acme.ghe.com", false],
++    [
++      "same host with URL transport details",
++      "http://fixture-user@acme.ghe.com:443/path?q=1",
++      "acme.ghe.com",
++      true,
++    ],
++    ["unsupported host", "attacker.example", "attacker.example", false],
++    ["malformed URL", "https://[broken", "https://[broken", false],
++    ["trailing dot is unsupported by provider", "acme.ghe.com.", "acme.ghe.com", false],
++  ])("keeps GitHub Copilot routing scope isolated: %s", (_name, existing, incoming, expected) => {
++    expect(
++      isSafeToCopyOAuthRoutingScope(
++        { provider: "github-copilot", enterpriseUrl: existing },
++        { provider: "github-copilot", enterpriseUrl: incoming },
++      ),
++    ).toBe(expected);
++  });
++
++  it("rejects identity-less cross-tenant credentials even when identity adoption is otherwise allowed", () => {
++    expect(
++      isSafeToCopyOAuthIdentity(
++        { provider: "github-copilot", enterpriseUrl: "acme.ghe.com" },
++        { provider: "github-copilot", enterpriseUrl: "other.ghe.com", accountId: "acct-main" },
++      ),
++    ).toBe(false);
++  });
++
+   describe("positive matches", () => {
+     it("accepts matching accountIds", () => {
+       expect(isSafeToCopyOAuthIdentity({ accountId: "x" }, { accountId: "x" })).toBe(true);
+diff --git a/src/agents/auth-profiles/oauth-identity.ts b/src/agents/auth-profiles/oauth-identity.ts
+index 7c97dd871c9..ff9ac0c2252 100644
+--- a/src/agents/auth-profiles/oauth-identity.ts
++++ b/src/agents/auth-profiles/oauth-identity.ts
+@@ -4,8 +4,48 @@
+  * overwrite a different account's local auth state.
+  */
+ import { asDateTimestampMs } from "@openclaw/normalization-core/number-coercion";
++import {
++  loadBundledPluginPublicSurfaceModuleSyncCore,
++  MissingPublicSurfaceError,
++} from "../../plugin-sdk/facade-loader.js";
+ import type { AuthProfileCredential, OAuthCredential } from "./types.js";
+ 
++type GithubCopilotOAuthSurface = {
++  normalizeGithubCopilotOAuthScope: (raw: string | undefined) => string | undefined;
++};
++
++/** Returns whether OAuth credentials target the same provider-owned tenant. */
++export function isSafeToCopyOAuthRoutingScope(
++  existing: Pick<OAuthCredential, "provider" | "enterpriseUrl">,
++  incoming: Pick<OAuthCredential, "provider" | "enterpriseUrl">,
++): boolean {
++  if (existing.provider !== incoming.provider) {
++    return false;
++  }
++  if (existing.provider !== "github-copilot") {
++    return true;
++  }
++  // Credential identity uses shipped policy even when plugin runtime is disabled.
++  // Never select a replacement policy from an environment-controlled plugin root.
++  let surface: GithubCopilotOAuthSurface;
++  try {
++    surface = loadBundledPluginPublicSurfaceModuleSyncCore<GithubCopilotOAuthSurface>({
++      dirName: "github-copilot",
++      artifactBasename: "api.js",
++      env: {},
++    });
++  } catch (error) {
++    if (error instanceof MissingPublicSurfaceError) {
++      return false;
++    }
++    throw error;
++  }
++  const { normalizeGithubCopilotOAuthScope } = surface;
++  const existingScope = normalizeGithubCopilotOAuthScope(existing.enterpriseUrl);
++  const incomingScope = normalizeGithubCopilotOAuthScope(incoming.enterpriseUrl);
++  return existingScope !== undefined && existingScope === incomingScope;
++}
++
+ /** Normalize account-id style identity tokens for exact comparison. */
+ export function normalizeAuthIdentityToken(value: string | undefined): string | undefined {
+   const trimmed = value?.trim();
+@@ -23,9 +63,21 @@ export function normalizeAuthEmailToken(value: string | undefined): string | und
+  * - adopt: main-agent store -> sub-agent store
+  */
+ export function isSafeToCopyOAuthIdentity(
+-  existing: Pick<OAuthCredential, "accountId" | "email">,
+-  incoming: Pick<OAuthCredential, "accountId" | "email">,
++  existing: Pick<OAuthCredential, "accountId" | "email"> &
++    Partial<Pick<OAuthCredential, "provider" | "enterpriseUrl">>,
++  incoming: Pick<OAuthCredential, "accountId" | "email"> &
++    Partial<Pick<OAuthCredential, "provider" | "enterpriseUrl">>,
+ ): boolean {
++  if (
++    existing.provider !== undefined &&
++    incoming.provider !== undefined &&
++    !isSafeToCopyOAuthRoutingScope(
++      { provider: existing.provider, enterpriseUrl: existing.enterpriseUrl },
++      { provider: incoming.provider, enterpriseUrl: incoming.enterpriseUrl },
++    )
++  ) {
++    return false;
++  }
+   const aAcct = normalizeAuthIdentityToken(existing.accountId);
+   const bAcct = normalizeAuthIdentityToken(incoming.accountId);
+   const aEmail = normalizeAuthEmailToken(existing.email);
+diff --git a/src/agents/auth-profiles/oauth-manager.test.ts b/src/agents/auth-profiles/oauth-manager.test.ts
+index 10b9a774fa1..a9137bc837b 100644
+--- a/src/agents/auth-profiles/oauth-manager.test.ts
++++ b/src/agents/auth-profiles/oauth-manager.test.ts
+@@ -24,6 +24,7 @@ import {
+   isSafeToAdoptBootstrapOAuthIdentity,
+   isSafeToAdoptMainStoreOAuthIdentity,
+ } from "./oauth-shared.js";
++import { shouldUseMainOwnerForLocalOAuthCredential } from "./ownership.js";
+ import { clearRuntimeAuthProfileStoreSnapshots } from "./runtime-snapshots.js";
+ import { resolveAuthProfileDatabasePath } from "./sqlite.js";
+ import {
+@@ -115,6 +116,71 @@ describe("isSafeToAdoptMainStoreOAuthIdentity", () => {
+       ),
+     ).toBe(true);
+   });
++
++  it.each([
++    ["different enterprise tenant", "acme.ghe.com", "other.ghe.com", false],
++    ["public versus enterprise tenant", undefined, "acme.ghe.com", false],
++    ["public URL spellings", undefined, "https://github.com/", true],
++    ["same enterprise tenant URL spelling", "HTTPS://ACME.GHE.COM/", "acme.ghe.com", true],
++  ])(
++    "applies provider routing scope before identity-less adoption: %s",
++    (_name, existingDomain, incomingDomain, expected) => {
++      expect(
++        isSafeToAdoptMainStoreOAuthIdentity(
++          createCredential({ provider: "github-copilot", enterpriseUrl: existingDomain }),
++          createCredential({
++            provider: "github-copilot",
++            enterpriseUrl: incomingDomain,
++            accountId: "acct-main",
++          }),
++        ),
++      ).toBe(expected);
++    },
++  );
++});
++
++describe("shouldUseMainOwnerForLocalOAuthCredential", () => {
++  it("does not transfer ownership across GitHub Copilot tenants", () => {
++    expect(
++      shouldUseMainOwnerForLocalOAuthCredential({
++        profileId: "github-copilot:default",
++        local: createCredential({
++          provider: "github-copilot",
++          enterpriseUrl: "acme.ghe.com",
++          refresh: "child-tenant-refresh",
++          expires: Date.now(),
++        }),
++        main: createCredential({
++          provider: "github-copilot",
++          enterpriseUrl: "other.ghe.com",
++          refresh: "main-tenant-refresh",
++          expires: Date.now() + 60_000,
++          accountId: "acct-main",
++        }),
++      }),
++    ).toBe(false);
++  });
++
++  it("keeps ownership transfer for the same tenant when main is fresher", () => {
++    expect(
++      shouldUseMainOwnerForLocalOAuthCredential({
++        profileId: "github-copilot:default",
++        local: createCredential({
++          provider: "github-copilot",
++          enterpriseUrl: "acme.ghe.com",
++          refresh: "child-generation-refresh",
++          expires: Date.now(),
++        }),
++        main: createCredential({
++          provider: "github-copilot",
++          enterpriseUrl: "https://acme.ghe.com/",
++          refresh: "main-generation-refresh",
++          expires: Date.now() + 60_000,
++          accountId: "acct-main",
++        }),
++      }),
++    ).toBe(true);
++  });
+ });
+ 
+ describe("matching account identity adoption", () => {
+diff --git a/src/agents/auth-profiles/oauth-shared.ts b/src/agents/auth-profiles/oauth-shared.ts
+index 58f60f54e7a..b48f63d7150 100644
+--- a/src/agents/auth-profiles/oauth-shared.ts
++++ b/src/agents/auth-profiles/oauth-shared.ts
+@@ -6,6 +6,7 @@
+ import { cloneAuthProfileStore } from "./clone.js";
+ import { hasUsableOAuthCredential } from "./credential-state.js";
+ import {
++  isSafeToCopyOAuthRoutingScope,
+   isSafeToCopyOAuthIdentity,
+   normalizeAuthEmailToken,
+   normalizeAuthIdentityToken,
+@@ -99,6 +100,9 @@ function isSafeOAuthIdentityTransition(
+   if (existing.provider !== incoming.provider) {
+     return false;
+   }
++  if (!isSafeToCopyOAuthRoutingScope(existing, incoming)) {
++    return false;
++  }
+   if (areOAuthCredentialsEquivalent(existing, incoming)) {
+     return true;
+   }
+diff --git a/src/agents/auth-profiles/oauth.copilot-tenant.test.ts b/src/agents/auth-profiles/oauth.copilot-tenant.test.ts
+new file mode 100644
+index 00000000000..d8c27769330
+--- /dev/null
++++ b/src/agents/auth-profiles/oauth.copilot-tenant.test.ts
+@@ -0,0 +1,192 @@
++/** Local production-store proofs; provider refresh success/failure is simulated. */
++import fs from "node:fs/promises";
++import os from "node:os";
++import path from "node:path";
++import { MAX_DATE_TIMESTAMP_MS } from "@openclaw/normalization-core/number-coercion";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-db.js";
++import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
++import { withEnvAsync } from "../../test-utils/env.js";
++import { testing as externalAuthTesting } from "./external-auth.test-support.js";
++import { createOAuthManager } from "./oauth-manager.js";
++import { isOAuthRefreshFence, isPendingOAuthRefreshFence } from "./oauth-refresh-marker.js";
++import { loadPersistedAuthProfileStore } from "./persisted.js";
++import { removeAuthProfilesAcrossOwnerStores } from "./profiles.js";
++import { clearRuntimeAuthProfileStoreSnapshots } from "./runtime-snapshots.js";
++import {
++  ensureAuthProfileStoreWithoutExternalProfiles,
++  saveAuthProfileStore,
++} from "./store-runtime.js";
++import type { OAuthCredential } from "./types.js";
++
++const profileId = "github-copilot:default";
++const credential = (enterpriseUrl: string, access: string, expires: number): OAuthCredential => ({
++  type: "oauth",
++  provider: "github-copilot",
++  enterpriseUrl,
++  access,
++  refresh: access,
++  expires,
++});
++
++beforeEach(() => {
++  externalAuthTesting.setResolveExternalAuthProfilesForTest(() => []);
++  clearRuntimeAuthProfileStoreSnapshots();
++});
++afterEach(() => {
++  externalAuthTesting.resetResolveExternalAuthProfilesForTest();
++  clearRuntimeAuthProfileStoreSnapshots();
++});
++
++async function withStores(run: (agentDir: string) => Promise<void>) {
++  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "copilot-tenant-")));
++  const agentDir = path.join(root, "agents", "child", "agent");
++  try {
++    await withEnvAsync(
++      { OPENCLAW_STATE_DIR: root, OPENCLAW_AGENT_DIR: path.join(root, "agents", "main", "agent") },
++      async () => {
++        await fs.mkdir(agentDir, { recursive: true });
++        await run(agentDir);
++      },
++    );
++  } finally {
++    closeOpenClawAgentDatabasesForTest();
++    closeOpenClawStateDatabaseForTest();
++    await fs.rm(root, { recursive: true, force: true });
++  }
++}
++
++function save(cred: OAuthCredential, agentDir?: string) {
++  saveAuthProfileStore({ version: 1, profiles: { [profileId]: cred } }, agentDir);
++}
++function read(agentDir?: string) {
++  return loadPersistedAuthProfileStore(agentDir)?.profiles[profileId];
++}
++function manager(refreshCredential: Parameters<typeof createOAuthManager>[0]["refreshCredential"]) {
++  return createOAuthManager({
++    canRefreshCredential: async () => true,
++    buildApiKey: async (_provider, cred) => cred.access,
++    refreshCredential,
++    readBootstrapCredential: () => null,
++  });
++}
++
++for (const [label, mainDomain, sameTenant] of [
++  ["different tenants", "other.ghe.com", false],
++  ["same tenant spelling", "https://acme.ghe.com/", true],
++] as const) {
++  describe(label, () => {
++    it("logout removes only stores that own the selected identity-less credential", async () => {
++      await withStores(async (agentDir) => {
++        const main = credential(mainDomain, "main-fixture", MAX_DATE_TIMESTAMP_MS);
++        save(credential("acme.ghe.com", "child-fixture", MAX_DATE_TIMESTAMP_MS), agentDir);
++        save(main);
++        expect(
++          await removeAuthProfilesAcrossOwnerStores({ agentDir, profileIds: [profileId] }),
++        ).toBe(true);
++        expect(read(agentDir)).toBeUndefined();
++        expect(read()).toEqual(sameTenant ? undefined : main);
++      });
++    });
++
++    it("resolves a newer main credential only for a compatible tenant upgrade", async () => {
++      await withStores(async (agentDir) => {
++        const local = credential("acme.ghe.com", "child-fixture", Date.now() + 10 * 60_000);
++        const main = {
++          ...credential(mainDomain, "main-fixture", MAX_DATE_TIMESTAMP_MS),
++          accountId: "main-fixture-account",
++        };
++        save(local, agentDir);
++        save(main);
++        const refresh = vi.fn(async () => null);
++        const result = await manager(refresh).resolveOAuthAccess({
++          store: ensureAuthProfileStoreWithoutExternalProfiles(agentDir),
++          profileId,
++          credential: local,
++          agentDir,
++        });
++        expect(result?.apiKey).toBe(sameTenant ? main.access : local.access);
++        expect(refresh).not.toHaveBeenCalled();
++        expect(read(agentDir)).toEqual(local);
++        expect(read()).toEqual(main);
++      });
++    });
++
++    it("persists local refresh and mirrors only to the matching tenant", async () => {
++      await withStores(async (agentDir) => {
++        const local = credential("acme.ghe.com", "child-fixture", Date.now() - 60_000);
++        const main = credential(mainDomain, "main-fixture", local.expires - 60_000);
++        const refreshed = {
++          ...local,
++          access: "refreshed-fixture",
++          refresh: "rotated-fixture",
++          expires: MAX_DATE_TIMESTAMP_MS,
++        };
++        save(local, agentDir);
++        save(main);
++        const refresh = vi.fn(async (input: OAuthCredential) => {
++          expect(input).toEqual(local);
++          return refreshed;
++        });
++        const result = await manager(refresh).resolveOAuthAccess({
++          store: ensureAuthProfileStoreWithoutExternalProfiles(agentDir),
++          profileId,
++          credential: local,
++          agentDir,
++        });
++        expect(result?.apiKey).toBe(refreshed.access);
++        expect(refresh).toHaveBeenCalledTimes(1);
++        expect(read(agentDir)).toEqual(refreshed);
++        expect(read()).toEqual(sameTenant ? refreshed : main);
++      });
++    });
++
++    it("recovers a failed refresh from concurrently renewed main auth only for the same tenant", async () => {
++      await withStores(async (agentDir) => {
++        // Post-claim recovery requires positive identity, independently of tenant scope.
++        const local = {
++          ...credential("acme.ghe.com", "child-fixture", Date.now() - 60_000),
++          accountId: "shared-account-fixture",
++        };
++        const main = {
++          ...credential(mainDomain, "main-fixture", local.expires - 60_000),
++          accountId: "shared-account-fixture",
++        };
++        const renewed = { ...main, access: "renewed-fixture", expires: MAX_DATE_TIMESTAMP_MS };
++        save(local, agentDir);
++        save(main);
++        const refresh = vi.fn(async () => {
++          save(renewed);
++          throw new Error("simulated provider refresh failure");
++        });
++        const result = manager(refresh).resolveOAuthAccess({
++          store: ensureAuthProfileStoreWithoutExternalProfiles(agentDir),
++          profileId,
++          credential: local,
++          agentDir,
++        });
++        if (sameTenant) {
++          await expect(result).resolves.toMatchObject({ apiKey: renewed.access });
++        } else {
++          await expect(result).rejects.toThrow("OAuth token refresh failed");
++        }
++        expect(refresh).toHaveBeenCalledTimes(1);
++        const failed = read(agentDir);
++        expect(failed?.type).toBe("oauth");
++        if (failed?.type !== "oauth") {
++          throw new Error("expected durable failed OAuth refresh fence");
++        }
++        expect(isOAuthRefreshFence(failed)).toBe(true);
++        expect(isPendingOAuthRefreshFence(failed)).toBe(false);
++        expect(failed).toMatchObject({
++          provider: local.provider,
++          enterpriseUrl: local.enterpriseUrl,
++          accountId: local.accountId,
++        });
++        expect(failed.access).not.toContain(local.access);
++        expect(failed.refresh).not.toContain(local.refresh);
++        expect(read()).toEqual(renewed);
++      });
++    });
++  });
++}
+diff --git a/src/commands/doctor/shared/stale-oauth-profile-shadows.test.ts b/src/commands/doctor/shared/stale-oauth-profile-shadows.test.ts
+index 8bb52396094..d39c9575cac 100644
+--- a/src/commands/doctor/shared/stale-oauth-profile-shadows.test.ts
++++ b/src/commands/doctor/shared/stale-oauth-profile-shadows.test.ts
+@@ -123,6 +123,94 @@ describe("stale OAuth profile shadow doctor repair", () => {
+     expect(loadPersistedAuthProfileStore(childAgentDir)?.profiles[profileId]).toBeDefined();
+   });
+ 
++  it("does not classify a cross-tenant GitHub Copilot profile as a removable shadow", async () => {
++    const profileId = "github-copilot:default";
++    const now = Date.now();
++    const childAgentDir = path.join(stateDir, "agents", "telegram", "agent");
++    await writeRawAuthStore(
++      childAgentDir,
++      storeWith(
++        profileId,
++        oauthCredential({
++          provider: "github-copilot",
++          enterpriseUrl: "acme.ghe.com",
++          access: "child-access",
++          refresh: "child-refresh",
++          expires: now - 60_000,
++        }),
++      ),
++    );
++    saveAuthProfileStore(
++      storeWith(
++        profileId,
++        oauthCredential({
++          provider: "github-copilot",
++          enterpriseUrl: "other.ghe.com",
++          access: "main-access",
++          refresh: "main-refresh",
++          expires: now + 60 * 60 * 1000,
++          accountId: "acct-main",
++        }),
++      ),
++    );
++
++    const hits = await scanStaleOAuthProfileShadows({
++      cfg: {} satisfies OpenClawConfig,
++      now,
++    });
++
++    expect(hits).toHaveLength(0);
++    await expect(
++      repairStaleOAuthProfileShadows({ cfg: {} satisfies OpenClawConfig, now }),
++    ).resolves.toEqual({ changes: [], warnings: [] });
++    expect(loadPersistedAuthProfileStore(childAgentDir)?.profiles[profileId]).toBeDefined();
++  });
++
++  it("still classifies a same-tenant fresher main profile as a removable shadow", async () => {
++    const profileId = "github-copilot:default";
++    const now = Date.now();
++    const childAgentDir = path.join(stateDir, "agents", "telegram", "agent");
++    await writeRawAuthStore(
++      childAgentDir,
++      storeWith(
++        profileId,
++        oauthCredential({
++          provider: "github-copilot",
++          enterpriseUrl: "acme.ghe.com",
++          access: "child-access",
++          refresh: "child-refresh",
++          expires: now - 60_000,
++        }),
++      ),
++    );
++    saveAuthProfileStore(
++      storeWith(
++        profileId,
++        oauthCredential({
++          provider: "github-copilot",
++          enterpriseUrl: "https://acme.ghe.com/",
++          access: "main-access",
++          refresh: "main-refresh",
++          expires: now + 60 * 60 * 1000,
++          accountId: "acct-main",
++        }),
++      ),
++    );
++
++    const hits = await scanStaleOAuthProfileShadows({
++      cfg: {} satisfies OpenClawConfig,
++      now,
++    });
++
++    expect(hits).toHaveLength(1);
++    const repair = await repairStaleOAuthProfileShadows({
++      cfg: {} satisfies OpenClawConfig,
++      now,
++    });
++    expect(repair.changes).toHaveLength(1);
++    expect(loadPersistedAuthProfileStore(childAgentDir)?.profiles[profileId]).toBeUndefined();
++  });
++
+   it("scans sqlite-only child auth stores after JSON migration", async () => {
+     const profileId = "anthropic:default";
+     const now = Date.now();

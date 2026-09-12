@@ -1,0 +1,50 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.0 [39m[90m/lab[39m
+
+[90mstdout[2m | copilot-proof.test.ts[2m > [22m[2mDoctor repair followed by real Copilot profile resolution (synthetic credentials)[2m > [22m[2mdifferent enterprise tenants
+[22m[39mCOPILOT_PROOF {"scenario":"different enterprise tenants","scanHits":1,"removedProfiles":1,"childPreserved":false,"selectedTokenOwner":"shared-main","selectedDomain":"other.ghe.com","proofBoundary":"actual Doctor + persisted SQLite + real Copilot credential resolution; no provider network authentication"}
+
+ [31m×[39m copilot-proof.test.ts[2m > [22mDoctor repair followed by real Copilot profile resolution (synthetic credentials)[2m > [22mdifferent enterprise tenants[33m 726[2mms[22m[39m
+[31m   → expected [ { …(3) } ] to have a length of +0 but got 1[39m
+[90mstdout[2m | copilot-proof.test.ts[2m > [22m[2mDoctor repair followed by real Copilot profile resolution (synthetic credentials)[2m > [22m[2msame enterprise tenant URL spelling
+[22m[39mCOPILOT_PROOF {"scenario":"same enterprise tenant URL spelling","scanHits":1,"removedProfiles":1,"childPreserved":false,"selectedTokenOwner":"shared-main","selectedDomain":"acme.ghe.com","proofBoundary":"actual Doctor + persisted SQLite + real Copilot credential resolution; no provider network authentication"}
+
+ [32m✓[39m copilot-proof.test.ts[2m > [22mDoctor repair followed by real Copilot profile resolution (synthetic credentials)[2m > [22msame enterprise tenant URL spelling[32m 279[2mms[22m[39m
+[90mstdout[2m | copilot-proof.test.ts[2m > [22m[2mDoctor repair followed by real Copilot profile resolution (synthetic credentials)[2m > [22m[2mpublic child versus enterprise main
+[22m[39mCOPILOT_PROOF {"scenario":"public child versus enterprise main","scanHits":1,"removedProfiles":1,"childPreserved":false,"selectedTokenOwner":"shared-main","selectedDomain":"other.ghe.com","proofBoundary":"actual Doctor + persisted SQLite + real Copilot credential resolution; no provider network authentication"}
+
+ [31m×[39m copilot-proof.test.ts[2m > [22mDoctor repair followed by real Copilot profile resolution (synthetic credentials)[2m > [22mpublic child versus enterprise main[32m 246[2mms[22m[39m
+[31m   → expected [ { …(3) } ] to have a length of +0 but got 1[39m
+[90mstdout[2m | copilot-proof.test.ts[2m > [22m[2mDoctor repair followed by real Copilot profile resolution (synthetic credentials)[2m > [22m[2mequivalent public tenant spellings
+[22m[39mCOPILOT_PROOF {"scenario":"equivalent public tenant spellings","scanHits":1,"removedProfiles":1,"childPreserved":false,"selectedTokenOwner":"shared-main","selectedDomain":"github.com","proofBoundary":"actual Doctor + persisted SQLite + real Copilot credential resolution; no provider network authentication"}
+
+ [32m✓[39m copilot-proof.test.ts[2m > [22mDoctor repair followed by real Copilot profile resolution (synthetic credentials)[2m > [22mequivalent public tenant spellings[32m 243[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 2 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m copilot-proof.test.ts[2m > [22mDoctor repair followed by real Copilot profile resolution (synthetic credentials)[2m > [22mdifferent enterprise tenants
+[41m[1m FAIL [22m[49m copilot-proof.test.ts[2m > [22mDoctor repair followed by real Copilot profile resolution (synthetic credentials)[2m > [22mpublic child versus enterprise main
+[31m[1mAssertionError[22m: expected [ { …(3) } ] to have a length of +0 but got 1[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 0[39m
+[31m+ 1[39m
+
+[36m [2m❯[22m copilot-proof.test.ts:[2m89:20[22m[39m
+    [90m 87|[39m       };
+    [90m 88|[39m       console.info("COPILOT_PROOF", JSON.stringify(receipt));
+    [90m 89|[39m       expect(hits).toHaveLength(scenario.remove ? 1 : 0);
+    [90m   |[39m                    [31m^[39m
+    [90m 90|[39m       expect(repair.warnings).toEqual([]);
+    [90m 91|[39m       expect(repair.changes).toHaveLength(scenario.remove ? 1 : 0);
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m2 passed[39m[22m[90m (4)[39m
+[2m   Start at [22m 20:27:01
+[2m   Duration [22m 11.55s[2m (transform 64%, import 15%, tests 13%, worker 8%)[22m
+

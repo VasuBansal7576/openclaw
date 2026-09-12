@@ -1,0 +1,12 @@
+{
+  "extensions/github-copilot/api.ts": "6f1b5cd8438c24fb0a8708f56818c736402ae227e2d47483c3a4bc551ace02c5",
+  "extensions/github-copilot/domain.ts": "38964cd1c8b3ea58d65855af28f0b4d54fa84bd38c935e8bb1e7ab63aa8a502d",
+  "extensions/github-copilot/oauth.test.ts": "d8ca5bb0b690e4eb96c4ff81ff3bc6fb6b12f1af99a7ef41e6822cd6ece2f819",
+  "extensions/github-copilot/oauth.ts": "d7fceda0ad792a61187ad52fe577f4eed8cc4de2ecf0597df03654a2664f1be7",
+  "src/agents/auth-profiles/oauth-identity.test.ts": "1cf673c9825278014dcff8f7ee72ef08c19a9cb5e15e5227b0a9c287e39180dc",
+  "src/agents/auth-profiles/oauth-identity.ts": "f6df45f184c743c62eae10f0d78d3b507a6a7d9580ca8bb5cdc05b6f3fa986ba",
+  "src/agents/auth-profiles/oauth-manager.test.ts": "4f8a5082e9e9f11cdbbf8bd4fe8f90cde5ed7bf8f679795f24a7fbcaf93238e0",
+  "src/agents/auth-profiles/oauth-shared.ts": "5d7614e693b0baea270d8ca4c6c4ea2b41c9026871363e4282f685a8427742fc",
+  "src/agents/auth-profiles/oauth.copilot-tenant.test.ts": "8910215429adf49aba5ac381ec73e70b370bcf07c13044e5cc2f5245dde315c9",
+  "src/commands/doctor/shared/stale-oauth-profile-shadows.test.ts": "d659272b263984dd605823ee21cf73b59c47565e72e6094b78f9ecb8892599b1"
+}
