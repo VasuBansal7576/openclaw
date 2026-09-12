@@ -1,0 +1,52 @@
+{
+  "head": "3cb830e78e1d9b566f22ccb48517e01d42efa465",
+  "candidateTarballSha256": "5fc136cfaf7af5b0e396f81c6927af4fe7df896ba1940100487f7c7e17ed80ba",
+  "installedAndUpgradedApiSha256": "13f03a65304d7e19f39363a81e6ccfc6175cf5d0465f7b52ddfd13b8c8a7e492",
+  "productionSourceSha256": {
+    "extensions/github-copilot/api.ts": "6f1b5cd8438c24fb0a8708f56818c736402ae227e2d47483c3a4bc551ace02c5",
+    "extensions/github-copilot/domain.ts": "38964cd1c8b3ea58d65855af28f0b4d54fa84bd38c935e8bb1e7ab63aa8a502d",
+    "extensions/github-copilot/oauth.ts": "d7fceda0ad792a61187ad52fe577f4eed8cc4de2ecf0597df03654a2664f1be7",
+    "src/agents/auth-profiles/oauth-identity.ts": "f6df45f184c743c62eae10f0d78d3b507a6a7d9580ca8bb5cdc05b6f3fa986ba",
+    "src/agents/auth-profiles/oauth-shared.ts": "5d7614e693b0baea270d8ca4c6c4ea2b41c9026871363e4282f685a8427742fc"
+  },
+  "release": {
+    "shasum": "c377db97052ebbbc7ccc1ea9f466d38d12292c07",
+    "tarball": "https://registry.npmjs.org/openclaw/-/openclaw-2026.9.4.tgz",
+    "fileCount": 10616,
+    "integrity": "sha512-lTQpEEe1Xm3u2PCHaPEr+vP8paGk1vLdHuzdItsNToaLI6hAqRVvgJYg+GxukJhETJp4tPy/S1Gftl4KuB8n7A==",
+    "signatures": [
+      {
+        "sig": "MEYCIQDxA/0bwzB28hpKSEaX9+wwpHLHL4/FpYa/SWjurNp8AgIhAIuKqGP1lsQnpS6BAHxldFcqa86DCfvHbakVqd9D4ASH",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      },
+      {
+        "sig": "MEQCICTJheFiXnrRnavh0yb6CGeMZR441ckewzGxC+Wfjo0EAiAR/W7NR8WJIXr9sw6RuyzjQ1I7vMM2R5lxs+c2NuQJ4g==",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    ],
+    "attestations": {
+      "url": "https://registry.npmjs.org/-/npm/v1/attestations/openclaw@2026.9.4",
+      "provenance": {
+        "predicateType": "https://slsa.dev/provenance/v1"
+      }
+    },
+    "unpackedSize": 200760485
+  },
+  "logsSha256": {
+    "published-updater.log": "982af9ffd6f73a15dfc6036a192b67b0262c89c65bcef082ac828253c573b5ca",
+    "same-public-doctor.log": "27233b5a186f689abba5e9c621075eece485954d7155e91d298fc313550d8e40",
+    "candidate-install.log": "951d1096e2799624f10b11d5f1f9d00b9cdb5376353fc8ce3863683018a3c319",
+    "different-enterprise-doctor.log": "30b108f9e5893b0bc8f4267cec3afd5f1bab67bab615156bdce43bad950ac6c2",
+    "proof.mjs": "ee9517614a631a993003c303749a266461b708650c5d337a1570b561a114ecf1",
+    "legacy-url-public-fenced-doctor.log": "154a6038c0a952ba1e8985c455595bc285bddeade46751b67c0cde865d798ffe",
+    "fresh-install-proof.log": "d46518535571a40cb45abf3422a3af33a8cf69cea2e4da1e9c6de00e86d64dd5",
+    "release-install.log": "582d8abf18846726465636e8f9161fffc6eae7bd64818556aa5ccd544a5a65df",
+    "pack.log": "b61d12e442810000ca12a3dcc21ea357a636cca4fbbb15b6caa654ac084b25ff",
+    "upgrade-verify.log": "beadacf95bb6057c2a54d0e60d8f1beb0a1fa877eef3675d88d91cec3319d761",
+    "legacy-url-enterprise-fenced-doctor.log": "a4c7de1bcfc55c1a77b91a2817af1b7c052f5ca70dc3628508b54f31c91e6883",
+    "public-enterprise-doctor.log": "190a3693966ecd29f1614ea8fc8d30b4886af6696514e35923244f6f2a55bd34",
+    "original-url-fixture-failure.log": "22a9889eaec0e13ecd9a7e64f6e13c340c7a069174692bd010ffd4a5d7f71c9e",
+    "same-enterprise-doctor.log": "c8bcc2493176c3d67b559c07a99986c5613167381ea032519366c03c13f56796",
+    "build.log": "447cb1849a1121d2697c93b39fe7ba2e653152cc3c5ad2d7255700870c38e594"
+  }
+}

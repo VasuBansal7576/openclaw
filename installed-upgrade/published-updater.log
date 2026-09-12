@@ -1,0 +1,460 @@
+{
+  "status": "ok",
+  "mode": "npm",
+  "root": "/usr/local/lib/node_modules/openclaw",
+  "before": {
+    "version": "2026.9.4",
+    "buildId": "2026.9.4-release-3a9d69db306c-2026-09-10T22-53-16.719Z"
+  },
+  "after": {
+    "version": "2026.9.4",
+    "buildId": "2026.9.4-2026-09-12T23-12-09.579Z"
+  },
+  "steps": [
+    {
+      "name": "global update",
+      "command": "/usr/local/bin/npm i -g --allow-scripts=file:/tmp/copilot-candidate.tgz --prefix /usr/local/lib/node_modules/.openclaw.update-stage-1h2yZ3 file:/tmp/copilot-candidate.tgz --no-fund --no-audit --loglevel=error --min-release-age=0",
+      "cwd": "/",
+      "durationMs": 21429,
+      "exitCode": 0,
+      "stdoutTail": "\nadded 330 packages in 21s",
+      "stderrTail": null,
+      "signal": null,
+      "killed": false,
+      "termination": "exit"
+    },
+    {
+      "name": "candidate migration rehearsal",
+      "command": "doctor --fix --non-interactive --no-workspace-suggestions",
+      "cwd": "/usr/local/lib/node_modules/.openclaw.update-stage-1h2yZ3/lib/node_modules/openclaw",
+      "durationMs": 6408,
+      "exitCode": 0
+    },
+    {
+      "name": "candidate doctor lint",
+      "command": "doctor --lint --json --severity-min error",
+      "cwd": "/usr/local/lib/node_modules/.openclaw.update-stage-1h2yZ3/lib/node_modules/openclaw",
+      "durationMs": 5311,
+      "exitCode": 0
+    },
+    {
+      "name": "candidate config validation",
+      "command": "config validate --json",
+      "cwd": "/usr/local/lib/node_modules/.openclaw.update-stage-1h2yZ3/lib/node_modules/openclaw",
+      "durationMs": 653,
+      "exitCode": 0
+    },
+    {
+      "name": "candidate plugin resolution",
+      "command": "plugins list --json",
+      "cwd": "/usr/local/lib/node_modules/.openclaw.update-stage-1h2yZ3/lib/node_modules/openclaw",
+      "durationMs": 602,
+      "exitCode": 0
+    },
+    {
+      "name": "candidate migration continuation",
+      "command": "--check",
+      "cwd": "/usr/local/lib/node_modules/.openclaw.update-stage-1h2yZ3/lib/node_modules/openclaw",
+      "durationMs": 712,
+      "exitCode": 0
+    },
+    {
+      "name": "candidate gateway canary",
+      "command": "gateway run",
+      "cwd": "/usr/local/lib/node_modules/.openclaw.update-stage-1h2yZ3/lib/node_modules/openclaw",
+      "durationMs": 6489,
+      "exitCode": 0
+    },
+    {
+      "name": "global install swap",
+      "command": "swap /usr/local/lib/node_modules/.openclaw.update-stage-1h2yZ3/lib/node_modules/openclaw -> /usr/local/lib/node_modules/openclaw",
+      "cwd": "/usr/local/lib/node_modules",
+      "durationMs": 23116,
+      "exitCode": 0,
+      "stdoutTail": "replaced openclaw",
+      "stderrTail": null
+    },
+    {
+      "name": "openclaw doctor",
+      "command": "/usr/local/bin/node /usr/local/lib/node_modules/openclaw/dist/index.js doctor --non-interactive --fix",
+      "cwd": "/usr/local/lib/node_modules/openclaw",
+      "durationMs": 7238,
+      "exitCode": 0,
+      "stdoutTail": "…                       │\n├──────────────────────────────────────────────────────────────────────────╯\n│\n◇  Plugin registry ─────────────────────────────────────────╮\n│                                                           │\n│  Plugin registry rebuilt: 39/60 enabled plugins indexed.  │\n│                                                           │\n├───────────────────────────────────────────────────────────╯\n│\n◇  State integrity ────────────────────────────────────────────────────╮\n│                                                                      │\n│  - OAuth dir not present (/tmp/upgrade-state/credentials). Skipping  │\n│    create because no WhatsApp/pairing channel config is active.      │\n│                                                                      │\n├──────────────────────────────────────────────────────────────────────╯\n│\n◇  Backups ─────────────────────────────────────────────────────────────╮\n│                                                                       │\n│  No successful backup is recorded.                                    │\n│  Create one now with openclaw backup create.                          │\n│  Schedule versioned backups with openclaw backup enable --repository  │\n│  <dir>.                                                               │\n│                                                                       │\n├───────────────────────────────────────────────────────────────────────╯\n│\n◇  Host desktop ──────────────────────────────────────────────────────────╮\n│                                                                         │\n│  disabled; enable the Desktop lab with desktop.host.enabled=true, then  │\n│  restart the gateway                                                    │\n│                                                                         │\n├─────────────────────────────────────────────────────────────────────────╯\n│\n◇  Browser relay authentication ──────────────────────────────────────────╮\n│                                                                         │\n│  - Legacy Browser Relay Authentication is enabled                       │\n│    (browser.extensionRelay.allowLegacyAuth=true).                       │\n│  - Update paired Chrome extensions and external CDP clients to Browser  │\n│    Relay Authentication v2, then set                                    │\n│    browser.extensionRelay.allowLegacyAuth=false.                        │\n│  - V2 clients never downgrade to legacy authentication.                 │\n│                                                                         │\n├─────────────────────────────────────────────────────────────────────────╯\n│\n◇  Skills ─────────────────────────────────────────────────────────────────╮\n│                                                                          │\n│  Agent \"main\":                                                           │\n│  33 allowed skills are not usable in this environment (missing           │\n│  binaries, env vars, or config).                                         │\n│  - 1password, blogwatcher, blucli, camsnap, coding-agent, eightctl,      │\n│    gemini, gh-issues, gifgrep, github, gog, goplaces, himalaya,          │\n│    mcporter, model-usage, nano-pdf, notion, obsidian, openai-whisper,    │\n│    openai-whisper-api, openhue, oracle, ordercli, python-debugpy, sag,   │\n│    sherpa-onnx-tts, songsee, sonoscli, spotify-player, summarize, tmux,  │\n│    trello, xurl                                                          │\n│  Disable unused skills: openclaw doctor --fix                            │\n│  Inspect details: openclaw skills check --agent <id> or openclaw skills  │\n│  info <name> --agent <id>                                                │\n│                                                                          │\n├──────────────────────────────────────────────────────────────────────────╯\n│\n◇  Skills ─────────────────────────────────────────────────────────────────╮\n│                                                                          │\n│  Agent \"child\":                                                          │\n│  33 allowed skills are not usable in this environment (missing           │\n│  binaries, env vars, or config).                                         │\n│  - 1password, blogwatcher, blucli, camsnap, coding-agent, eightctl,      │\n│    gemini, gh-issues, gifgrep, github, gog, goplaces, himalaya,          │\n│    mcporter, model-usage, nano-pdf, notion, obsidian, openai-whisper,    │\n│    openai-whisper-api, openhue, oracle, ordercli, python-debugpy, sag,   │\n│    sherpa-onnx-tts, songsee, sonoscli, spotify-player, summarize, tmux,  │\n│    trello, xurl                                                          │\n│  Disable unused skills: openclaw doctor --fix                            │\n│  Inspect details: openclaw skills check --agent <id> or openclaw skills  │\n│  info <name> --agent <id>                                                │\n│                                                                          │\n├──────────────────────────────────────────────────────────────────────────╯\n│\n◇  Doctor changes ────────────────────────────────────╮\n│                                                     │\n│  Create heartbeat monitor for agent \"main\" at 30m.  │\n│                                                     │\n├─────────────────────────────────────────────────────╯\n│\n◇  Gateway ─────────────────────────────────────────────╮\n│                                                       │\n│  Gateway health will be checked after Doctor repair.  │\n│                                                       │\n├───────────────────────────────────────────────────────╯\n│\n◇  Memory search ──────────────────────────────────────────────────────────╮\n│                                                                          │\n│  Agent \"main\": Memory search provider is set to \"openai\" but no API key  │\n│  was found.                                                              │\n│  Semantic recall will not work without a valid API key.                  │\n│                                                                          │\n│                                                                          │\n│  Fix (pick one):                                                         │\n│  - Set OPENAI_API_KEY in your environment                                │\n│  - Configure credentials: openclaw configure --section model             │\n│  - To disable: openclaw config set memory.search.enabled false           │\n│                                                                          │\n│  Verify: openclaw memory status --deep                                   │\n│                                                                          │\n├──────────────────────────────────────────────────────────────────────────╯\n│\n◇  Memory search ───────────────────────────────────────────────────────╮\n│                                                                       │\n│  Agent \"child\": Memory search provider is set to \"openai\" but no API  │\n│  key was found.                                                       │\n│  Semantic recall will not work without a valid API key.               │\n│                                                                       │\n│                                                                       │\n│  Fix (pick one):                                                      │\n│  - Set OPENAI_API_KEY in your environment                             │\n│  - Configure credentials: openclaw configure --section model          │\n│  - To disable: openclaw config set memory.search.enabled false        │\n│                                                                       │\n│  Verify: openclaw memory status --deep                                │\n│                                                                       │\n├───────────────────────────────────────────────────────────────────────╯\n│\n└  Doctor complete.",
+      "stderrTail": "[config] warnings: agents.entries: Moved agents.list to keyed agents.entries.; agents.entries: Materialized legacy per-surface agent ownership.; agents.entries: Removed retired agents.entries.*.default markers.\n[agents/auth-profiles] refused to adopt fresh main-store OAuth credential: *** mismatch\n[agents/auth-profiles] refused to mirror OAuth credential: *** mismatch or regression\n[update] Doctor changed config key: agents.\n[update] Doctor changed config key: meta.\n[update] Doctor changed config key: talk.\n[update] Doctor changed config key: wizard.\n[update] Doctor migration: Moved agents.list to keyed agents.entries.\n[update] Doctor migration: Materialized legacy per-surface agent ownership.\n[update] Doctor migration: Removed retired agents.entries.*.default markers.\n[update] Doctor migration: Prepared the canonical agent roster without retired default markers for persistence.\n[update] Doctor migration: Stamped the multi-agent roster for explicit per-surface ownership.\ncore/doctor/node-hosting-preconditions: Gateway is only bound to loopback. Set gateway.bind=lan, enable tailscale serve, or configure plugins.entries.device-pair.config.publicUrl.\nPost-install doctor reported a recoverable update-time repair warning after the package install was verified; continuing with post-core plugin convergence.",
+      "signal": null,
+      "killed": false,
+      "termination": "exit",
+      "warnings": [
+        "core/doctor/node-hosting-preconditions: Gateway is only bound to loopback. Set gateway.bind=lan, enable tailscale serve, or configure plugins.entries.device-pair.config.publicUrl."
+      ],
+      "advisory": {
+        "kind": "package-post-install-doctor",
+        "message": "core/doctor/node-hosting-preconditions: Gateway is only bound to loopback. Set gateway.bind=lan, enable tailscale serve, or configure plugins.entries.device-pair.config.publicUrl.\nPost-install doctor reported a recoverable update-time repair warning after the package install was verified; continuing with post-core plugin convergence.\nRun openclaw doctor --fix to finish deferred repairs."
+      }
+    }
+  ],
+  "recovery": {
+    "serviceRestartSafe": true,
+    "version": "2026.9.4"
+  },
+  "durationMs": 85831,
+  "runId": "1a7057b7-630c-4cc5-a563-aee3ae642b88",
+  "postUpdate": {
+    "plugins": {
+      "status": "ok",
+      "assessment": {
+        "kind": "no-payload-repair"
+      },
+      "changed": false,
+      "warnings": [],
+      "sync": {
+        "changed": false,
+        "switchedToBundled": [],
+        "switchedToNpm": [],
+        "warnings": [],
+        "errors": []
+      },
+      "npm": {
+        "changed": false,
+        "outcomes": []
+      },
+      "integrityDrifts": []
+    }
+  },
+  "run": {
+    "runId": "1a7057b7-630c-4cc5-a563-aee3ae642b88",
+    "createdAtMs": 1789255460423,
+    "updatedAtMs": 1789255546754,
+    "trigger": "cli",
+    "phase": "finished",
+    "status": "succeeded",
+    "reason": null,
+    "origin": {
+      "driver": {
+        "host": "bf08dd7def81",
+        "pid": 1429,
+        "startIdentity": "227279"
+      },
+      "previousDrivers": [
+        {
+          "host": "bf08dd7def81",
+          "pid": 517,
+          "startIdentity": "220311"
+        }
+      ],
+      "nextAction": "After verifying your history, preview recovery rollback retirement with openclaw update cleanup --dry-run for state $OPENCLAW_STATE_DIR. Keep the same state/config overrides."
+    },
+    "target": {
+      "channel": "stable",
+      "tag": "file:/tmp/copilot-candidate.tgz",
+      "kind": "package"
+    },
+    "before": {
+      "version": "2026.9.4",
+      "buildId": "2026.9.4-release-3a9d69db306c-2026-09-10T22-53-16.719Z"
+    },
+    "after": {
+      "version": "2026.9.4",
+      "buildId": "2026.9.4-2026-09-12T23-12-09.579Z"
+    },
+    "steps": [
+      {
+        "step": "requested",
+        "status": "completed",
+        "startedAtMs": 1789255460423,
+        "endedAtMs": 1789255460909
+      },
+      {
+        "step": "driver:adopted",
+        "status": "completed",
+        "endedAtMs": 1789255529391
+      },
+      {
+        "step": "staging",
+        "status": "completed",
+        "startedAtMs": 1789255460909,
+        "endedAtMs": 1789255460918
+      },
+      {
+        "step": "validating",
+        "status": "completed",
+        "startedAtMs": 1789255460918,
+        "endedAtMs": 1789255520433
+      },
+      {
+        "step": "global update",
+        "status": "completed",
+        "startedAtMs": 1789255461301,
+        "endedAtMs": 1789255482730
+      },
+      {
+        "step": "candidate migration rehearsal",
+        "status": "completed",
+        "startedAtMs": 1789255484134,
+        "endedAtMs": 1789255490542
+      },
+      {
+        "step": "candidate doctor lint",
+        "status": "completed",
+        "startedAtMs": 1789255490550,
+        "endedAtMs": 1789255495861
+      },
+      {
+        "step": "candidate config validation",
+        "status": "completed",
+        "startedAtMs": 1789255495876,
+        "endedAtMs": 1789255496529
+      },
+      {
+        "step": "candidate plugin resolution",
+        "status": "completed",
+        "startedAtMs": 1789255496539,
+        "endedAtMs": 1789255497141
+      },
+      {
+        "step": "candidate migration continuation",
+        "status": "completed",
+        "startedAtMs": 1789255497150,
+        "endedAtMs": 1789255497862
+      },
+      {
+        "step": "candidate gateway canary",
+        "status": "completed",
+        "startedAtMs": 1789255497872,
+        "endedAtMs": 1789255504361
+      },
+      {
+        "step": "activating",
+        "status": "completed",
+        "startedAtMs": 1789255520433,
+        "endedAtMs": 1789255546754
+      },
+      {
+        "step": "finalize:doctor:model-retirement",
+        "status": "completed",
+        "endedAtMs": 1789255535177,
+        "detail": "Deferred model retirement repair completed after plugin convergence."
+      },
+      {
+        "step": "warning:finalize:doctor:model-retirement:deferred",
+        "status": "completed",
+        "detail": "Model retirement repair deferred until plugin convergence."
+      },
+      {
+        "step": "openclaw doctor",
+        "status": "completed",
+        "startedAtMs": 1789255520525,
+        "endedAtMs": 1789255527763
+      },
+      {
+        "step": "warning:openclaw doctor",
+        "status": "completed",
+        "startedAtMs": 1789255520525,
+        "endedAtMs": 1789255527763,
+        "detail": "core/doctor/node-hosting-preconditions: Gateway is only bound to loopback. Set gateway.bind=lan, enable tailscale serve, or configure plugins.entries.device-pair.config.publicUrl."
+      },
+      {
+        "step": "post-update verification",
+        "status": "completed",
+        "startedAtMs": 1789255529704,
+        "endedAtMs": 1789255543673
+      },
+      {
+        "step": "warning:finalize:doctor:model-retirement",
+        "status": "completed",
+        "detail": "Deferred model retirement repair completed after plugin convergence."
+      },
+      {
+        "step": "global install swap",
+        "status": "completed"
+      }
+    ],
+    "verification": {},
+    "repair": [],
+    "confirmedAtMs": null,
+    "finishedAtMs": 1789255546754,
+    "downtimeMs": null
+  }
+}
+┌  OpenClaw doctor
+│
+◇  Startup optimization ────────────────────────────────────────────────╮
+│                                                                       │
+│  - NODE_COMPILE_CACHE is not set; repeated CLI runs can be slower on  │
+│    small hosts (Raspberry Pi/VM).                                     │
+│  - NODE_DISABLE_COMPILE_CACHE is set; startup compile cache is        │
+│    disabled.                                                          │
+│  - OPENCLAW_NO_RESPAWN is not set to 1; set it when you want routine  │
+│    gateway restarts to stay in-process instead of handing off to a    │
+│    managed supervisor.                                                │
+│  - Suggested env for low-power hosts:                                 │
+│    export NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache          │
+│    mkdir -p /var/tmp/openclaw-compile-cache                           │
+│    export OPENCLAW_NO_RESPAWN=1                                       │
+│    unset NODE_DISABLE_COMPILE_CACHE                                   │
+│                                                                       │
+├───────────────────────────────────────────────────────────────────────╯
+│
+◇  Update history ────────────────────────────────────────────────────────╮
+│                                                                         │
+│  Recorded warnings from update 1a7057b7-630c-4cc5-a563-aee3ae642b88 (a  │
+│  later repair may have resolved them):                                  │
+│  Model retirement repair deferred until plugin convergence.             │
+│  core/doctor/node-hosting-preconditions: Gateway is only bound to       │
+│  loopback. Set gateway.bind=lan, enable tailscale serve, or configure   │
+│  plugins.entries.device-pair.config.publicUrl.                          │
+│                                                                         │
+├─────────────────────────────────────────────────────────────────────────╯
+│
+◇  Update Doctor scope ──────────────────────────────────────────────────╮
+│                                                                        │
+│  Omitted during update: Active tool schema warnings, Project clones,   │
+│  SQLite database size, GitHub projects, Bootstrap size, Workspace      │
+│  suggestions.                                                          │
+│  Run `openclaw doctor` after the update to inspect these diagnostics.  │
+│                                                                        │
+├────────────────────────────────────────────────────────────────────────╯
+│
+◇  Gateway auth ───────────────────────────────────────────────────────╮
+│                                                                      │
+│  Gateway auth is off or missing a token.                             │
+│  Run `openclaw doctor --fix --generate-gateway-token` to generate a  │
+│  token, then restart the Gateway.                                    │
+│                                                                      │
+├──────────────────────────────────────────────────────────────────────╯
+[warning] core/doctor/node-hosting-preconditions gateway.bind - Gateway is only bound to loopback. Set gateway.bind=lan, enable tailscale serve, or configure plugins.entries.device-pair.config.publicUrl.
+  fix: If an edge proxy fronts node onboarding, allow /j/* and /__openclaw__/worker without edge identity auth, and preserve WebSocket upgrade on /__openclaw__/worker. Both routes enforce their own credentials.
+│
+◇  Command owner ──────────────────────────────────────────────────────────╮
+│                                                                          │
+│  No command owner is configured.                                         │
+│  A command owner is your trusted human operator account, allowed to      │
+│  update OpenClaw with /update, restart the Gateway, change               │
+│  configuration, and approve commands. Chat allowlists do not grant this  │
+│  authority.                                                              │
+│  Run openclaw channels add and complete a channel's setup to choose      │
+│  your operator account, including servers and groups without DM          │
+│  pairing.                                                                │
+│  CLI pairing approval records the first command owner. Control UI        │
+│  pairing approval has a separate owner checkbox.                         │
+│  Fix: set commands.ownerAllowFrom to your channel user id, for example   │
+│  openclaw config set commands.ownerAllowFrom '["telegram:123456789"]'    │
+│  Restart the gateway after changing this if it is already running.       │
+│                                                                          │
+├──────────────────────────────────────────────────────────────────────────╯
+│
+◇  Plugin registry ───────────────────────────────────────────╮
+│                                                             │
+│  Plugin registry refreshed: 39/60 enabled plugins indexed.  │
+│                                                             │
+├─────────────────────────────────────────────────────────────╯
+│
+◇  State integrity ────────────────────────────────────────────────────╮
+│                                                                      │
+│  - OAuth dir not present (/tmp/upgrade-state/credentials). Skipping  │
+│    create because no WhatsApp/pairing channel config is active.      │
+│                                                                      │
+├──────────────────────────────────────────────────────────────────────╯
+│
+◇  Backups ─────────────────────────────────────────────────────────────╮
+│                                                                       │
+│  No successful backup is recorded.                                    │
+│  Create one now with openclaw backup create.                          │
+│  Schedule versioned backups with openclaw backup enable --repository  │
+│  <dir>.                                                               │
+│                                                                       │
+├───────────────────────────────────────────────────────────────────────╯
+│
+◇  Host desktop ──────────────────────────────────────────────────────────╮
+│                                                                         │
+│  disabled; enable the Desktop lab with desktop.host.enabled=true, then  │
+│  restart the gateway                                                    │
+│                                                                         │
+├─────────────────────────────────────────────────────────────────────────╯
+│
+◇  Browser relay authentication ──────────────────────────────────────────╮
+│                                                                         │
+│  - Legacy Browser Relay Authentication is enabled                       │
+│    (browser.extensionRelay.allowLegacyAuth=true).                       │
+│  - Update paired Chrome extensions and external CDP clients to Browser  │
+│    Relay Authentication v2, then set                                    │
+│    browser.extensionRelay.allowLegacyAuth=false.                        │
+│  - V2 clients never downgrade to legacy authentication.                 │
+│                                                                         │
+├─────────────────────────────────────────────────────────────────────────╯
+│
+◇  Skills ─────────────────────────────────────────────────────────────────╮
+│                                                                          │
+│  Agent "main":                                                           │
+│  33 allowed skills are not usable in this environment (missing           │
+│  binaries, env vars, or config).                                         │
+│  - 1password, blogwatcher, blucli, camsnap, coding-agent, eightctl,      │
+│    gemini, gh-issues, gifgrep, github, gog, goplaces, himalaya,          │
+│    mcporter, model-usage, nano-pdf, notion, obsidian, openai-whisper,    │
+│    openai-whisper-api, openhue, oracle, ordercli, python-debugpy, sag,   │
+│    sherpa-onnx-tts, songsee, sonoscli, spotify-player, summarize, tmux,  │
+│    trello, xurl                                                          │
+│  Disable unused skills: openclaw doctor --fix                            │
+│  Inspect details: openclaw skills check --agent <id> or openclaw skills  │
+│  info <name> --agent <id>                                                │
+│                                                                          │
+├──────────────────────────────────────────────────────────────────────────╯
+│
+◇  Skills ─────────────────────────────────────────────────────────────────╮
+│                                                                          │
+│  Agent "child":                                                          │
+│  33 allowed skills are not usable in this environment (missing           │
+│  binaries, env vars, or config).                                         │
+│  - 1password, blogwatcher, blucli, camsnap, coding-agent, eightctl,      │
+│    gemini, gh-issues, gifgrep, github, gog, goplaces, himalaya,          │
+│    mcporter, model-usage, nano-pdf, notion, obsidian, openai-whisper,    │
+│    openai-whisper-api, openhue, oracle, ordercli, python-debugpy, sag,   │
+│    sherpa-onnx-tts, songsee, sonoscli, spotify-player, summarize, tmux,  │
+│    trello, xurl                                                          │
+│  Disable unused skills: openclaw doctor --fix                            │
+│  Inspect details: openclaw skills check --agent <id> or openclaw skills  │
+│  info <name> --agent <id>                                                │
+│                                                                          │
+├──────────────────────────────────────────────────────────────────────────╯
+│
+◇  Gateway ─────────────────────────────────────────────╮
+│                                                       │
+│  Gateway health will be checked after Doctor repair.  │
+│                                                       │
+├───────────────────────────────────────────────────────╯
+│
+◇  Memory search ──────────────────────────────────────────────────────────╮
+│                                                                          │
+│  Agent "main": Memory search provider is set to "openai" but no API key  │
+│  was found.                                                              │
+│  Semantic recall will not work without a valid API key.                  │
+│                                                                          │
+│                                                                          │
+│  Fix (pick one):                                                         │
+│  - Set OPENAI_API_KEY in your environment                                │
+│  - Configure credentials: openclaw configure --section model             │
+│  - To disable: openclaw config set memory.search.enabled false           │
+│                                                                          │
+│  Verify: openclaw memory status --deep                                   │
+│                                                                          │
+├──────────────────────────────────────────────────────────────────────────╯
+│
+◇  Memory search ───────────────────────────────────────────────────────╮
+│                                                                       │
+│  Agent "child": Memory search provider is set to "openai" but no API  │
+│  key was found.                                                       │
+│  Semantic recall will not work without a valid API key.               │
+│                                                                       │
+│                                                                       │
+│  Fix (pick one):                                                      │
+│  - Set OPENAI_API_KEY in your environment                             │
+│  - Configure credentials: openclaw configure --section model          │
+│  - To disable: openclaw config set memory.search.enabled false        │
+│                                                                       │
+│  Verify: openclaw memory status --deep                                │
+│                                                                       │
+├───────────────────────────────────────────────────────────────────────╯
+│
+└  Doctor complete.
+service management skipped: non-default state dir or config path. Rerun with HOME set to the OS account home, without OPENCLAW_HOME, and with OPENCLAW_STATE_DIR and OPENCLAW_CONFIG_PATH either unset or pointing at the canonical paths for that account home and profile to manage the gateway service during update.

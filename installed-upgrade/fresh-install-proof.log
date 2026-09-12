@@ -1,0 +1,24 @@
+{"scenario":"different-enterprise","step":"seed","status":0,"signal":null,"state":"/tmp/installed-copilot-5J5dfA"}
+{"scenario":"different-enterprise","step":"doctor","status":0,"signal":null,"state":"/tmp/installed-copilot-5J5dfA"}
+{"scenario":"different-enterprise","step":"verify","status":0,"signal":null,"state":"/tmp/installed-copilot-5J5dfA"}
+{"scenario":"different-enterprise","childPreserved":true,"selectedOwner":"child","domain":"acme.ghe.com","proof":"installed Doctor + SQLite + installed provider selector; synthetic credentials, offline; fenced cases are negative compatibility controls"}
+{"scenario":"same-enterprise","step":"seed","status":0,"signal":null,"state":"/tmp/installed-copilot-bE0P9o"}
+{"scenario":"same-enterprise","step":"doctor","status":0,"signal":null,"state":"/tmp/installed-copilot-bE0P9o"}
+{"scenario":"same-enterprise","step":"verify","status":0,"signal":null,"state":"/tmp/installed-copilot-bE0P9o"}
+{"scenario":"same-enterprise","childPreserved":false,"selectedOwner":"main","domain":"acme.ghe.com","proof":"installed Doctor + SQLite + installed provider selector; synthetic credentials, offline; fenced cases are negative compatibility controls"}
+{"scenario":"public-enterprise","step":"seed","status":0,"signal":null,"state":"/tmp/installed-copilot-97jb88"}
+{"scenario":"public-enterprise","step":"doctor","status":0,"signal":null,"state":"/tmp/installed-copilot-97jb88"}
+{"scenario":"public-enterprise","step":"verify","status":0,"signal":null,"state":"/tmp/installed-copilot-97jb88"}
+{"scenario":"public-enterprise","childPreserved":true,"selectedOwner":"child","domain":"github.com","proof":"installed Doctor + SQLite + installed provider selector; synthetic credentials, offline; fenced cases are negative compatibility controls"}
+{"scenario":"same-public","step":"seed","status":0,"signal":null,"state":"/tmp/installed-copilot-R22cb3"}
+{"scenario":"same-public","step":"doctor","status":0,"signal":null,"state":"/tmp/installed-copilot-R22cb3"}
+{"scenario":"same-public","step":"verify","status":0,"signal":null,"state":"/tmp/installed-copilot-R22cb3"}
+{"scenario":"same-public","childPreserved":false,"selectedOwner":"main","domain":"github.com","proof":"installed Doctor + SQLite + installed provider selector; synthetic credentials, offline; fenced cases are negative compatibility controls"}
+{"scenario":"legacy-url-enterprise-fenced","step":"seed","status":0,"signal":null,"state":"/tmp/installed-copilot-rRznSu"}
+{"scenario":"legacy-url-enterprise-fenced","step":"doctor","status":0,"signal":null,"state":"/tmp/installed-copilot-rRznSu"}
+{"scenario":"legacy-url-enterprise-fenced","step":"verify","status":0,"signal":null,"state":"/tmp/installed-copilot-rRznSu"}
+{"scenario":"legacy-url-enterprise-fenced","childPreserved":false,"selectedOwner":"main-fenced","domain":"acme.ghe.com","proof":"installed Doctor + SQLite + installed provider selector; synthetic credentials, offline; fenced cases are negative compatibility controls"}
+{"scenario":"legacy-url-public-fenced","step":"seed","status":0,"signal":null,"state":"/tmp/installed-copilot-Dltp87"}
+{"scenario":"legacy-url-public-fenced","step":"doctor","status":0,"signal":null,"state":"/tmp/installed-copilot-Dltp87"}
+{"scenario":"legacy-url-public-fenced","step":"verify","status":0,"signal":null,"state":"/tmp/installed-copilot-Dltp87"}
+{"scenario":"legacy-url-public-fenced","childPreserved":false,"selectedOwner":"main-fenced","domain":"github.com","proof":"installed Doctor + SQLite + installed provider selector; synthetic credentials, offline; fenced cases are negative compatibility controls"}
