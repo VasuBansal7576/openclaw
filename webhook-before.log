@@ -1,0 +1,37 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.0 [39m[90m/work[39m
+
+[90mstdout[2m | src/plugin-sdk/webhook-compatibility.test.ts[2m > [22m[2mpreserves the public webhook helper's inherited requester cancellation
+[22m[39mWEBHOOK_COMPATIBILITY_RECEIPT {"inherited":false,"aborted":true,"sameReason":false,"lateError":null,"value":"late tracked work","roots":0,"order":["ack","callback"]}
+
+ [31m×[39m [30m[45m unit-fast [49m[39m src/plugin-sdk/webhook-compatibility.test.ts[2m > [22mpreserves the public webhook helper's inherited requester cancellation[32m 23[2mms[22m[39m
+[31m   → expected false to be true // Object.is equality[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m [30m[45m unit-fast [49m[39m src/plugin-sdk/webhook-compatibility.test.ts[2m > [22mpreserves the public webhook helper's inherited requester cancellation
+[31m[1mAssertionError[22m: expected false to be true // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+[36m [2m❯[22m src/plugin-sdk/webhook-compatibility.test.ts:[2m53:23[22m[39m
+    [90m 51|[39m       order,
+    [90m 52|[39m     }));
+    [90m 53|[39m     expect(inherited).toBe(true);
+    [90m   |[39m                       [31m^[39m
+    [90m 54|[39m     expect(callbackSignal?.aborted).toBe(true);
+    [90m 55|[39m     expect(callbackSignal?.reason).toBe(reason);
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m   Start at [22m 15:33:17
+[2m   Duration [22m 2.29s[2m (transform 74%, import 22%, setup 2%, tests 1%)[22m
+
+[test] FAILED (exit 1)

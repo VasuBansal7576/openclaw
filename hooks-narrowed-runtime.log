@@ -1,0 +1,21 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.0 [39m[90m/work[39m
+
+ [32m✓[39m [30m[42m hooks [49m[39m src/hooks/autoreset-regression.test.ts[2m > [22mautomatic reset hook lifetime[2m > [22mcompletes delayed tracked work after the triggering requester closes[32m 141[2mms[22m[39m
+ [32m✓[39m [30m[42m hooks [49m[39m src/hooks/autoreset-regression.test.ts[2m > [22mautomatic reset hook lifetime[2m > [22mowns and releases delayed hook work when there is no parent request[32m 14[2mms[22m[39m
+ [32m✓[39m [30m[42m hooks [49m[39m src/hooks/autoreset-regression.test.ts[2m > [22mautomatic reset hook lifetime[2m > [22mreleases work and continues dispatch when a delayed hook throws[32m 16[2mms[22m[39m
+[vitest] still running with no output for 30000ms.
+[vitest-workers] prepared 25d57ae1a88a in 32501ms (9116 inputs, 4706 outputs)
+[vitest] still running with no output for 60000ms.
+[vitest] still running with no output for 90000ms.
+[90mstdout[2m | src/hooks/reset-runtime-proof.test.ts[2m > [22m[2mreal idle rollover completes delayed archive command and bundled memory capture
+[22m[39mRESET_RUNTIME_RECEIPT {"reason":"idle","retired":"retiring-reset-proof","successor":"retiring-reset-proof","parentClosed":true,"rootsBeforeRelease":2,"holdersBeforeRelease":["hooks:session-auto-reset","session:browser-cleanup"],"rootsAfter":0,"error":null,"stdout":"archive-written","archived":{"archived":"retiring-reset-proof","pid":1057},"memoryFiles":["2026-09-13-1535.md"],"memoryHasRetiringText":true,"source":"real initSessionState idle rollover; test-installed delayed archive hook + bundled session-memory; no module mocks"}
+
+ [32m✓[39m [30m[42m hooks [49m[39m src/hooks/reset-runtime-proof.test.ts[2m > [22mreal idle rollover completes delayed archive command and bundled memory capture[33m 10744[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[32m4 passed[39m[22m[90m (4)[39m
+[2m   Start at [22m 15:33:51
+[2m   Duration [22m 107.78s[2m (transform 79%, tests 10%, import 9%, worker 1%)[22m
+
+[vitest-workers] verifying completed generation before cleanup

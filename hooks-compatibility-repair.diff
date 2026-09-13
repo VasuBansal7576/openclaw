@@ -1,0 +1,77 @@
+diff --git a/src/plugin-sdk/webhook-request-guards.test.ts b/src/plugin-sdk/webhook-request-guards.test.ts
+index 8d032a9c0d..96850521d0 100644
+--- a/src/plugin-sdk/webhook-request-guards.test.ts
++++ b/src/plugin-sdk/webhook-request-guards.test.ts
+@@ -365,35 +365,4 @@ describe("runDetachedWebhookWork", () => {
+ 
+     await expect(inherited).rejects.toThrow("Gateway is draining");
+   });
+-
+-  it("keeps tracked work accepted after the caller's async work scope closes", async () => {
+-    const { runWithGatewayHttpWorkAdmission } =
+-      await import("../gateway/server/http-work-admission.js");
+-    const { AsyncWorkScope, captureAsyncWorkTracker } =
+-      await import("../shared/async-work-scope.js");
+-
+-    const parentScope = new AsyncWorkScope();
+-    let detached: Promise<string> | undefined;
+-    await runWithGatewayHttpWorkAdmission(
+-      new ServerResponse(new IncomingMessage(new Socket())),
+-      async () =>
+-        // Deferred post-ack work starts under the request's async work scope; that
+-        // scope closes once the triggering turn settles, but the detached callback
+-        // must still be able to run and track embedded work afterwards.
+-        await parentScope.track(async () => {
+-          detached = runDetachedWebhookWork(async () => {
+-            const trackOwner = captureAsyncWorkTracker();
+-            await new Promise<void>((resolve) => {
+-              setTimeout(resolve, 25);
+-            });
+-            return await trackOwner(async () => "tracked-after-close");
+-          });
+-          return true;
+-        }),
+-    );
+-
+-    parentScope.beginClose();
+-    await parentScope.drain();
+-    await expect(detached).resolves.toBe("tracked-after-close");
+-  });
+ });
+diff --git a/src/plugin-sdk/webhook-request-guards.ts b/src/plugin-sdk/webhook-request-guards.ts
+index 3f15e765e5..5bc6204771 100644
+--- a/src/plugin-sdk/webhook-request-guards.ts
++++ b/src/plugin-sdk/webhook-request-guards.ts
+@@ -15,7 +15,7 @@ import {
+   waitForHttpRequestRejection,
+ } from "../infra/http-request-lifecycle.js";
+ import { pruneMapToMaxSize } from "../infra/map-size.js";
+-import { runWithGatewayDetachedWorkContinuation } from "../process/gateway-work-admission.js";
++import { runWithGatewayIndependentRootWorkContinuation } from "../process/gateway-work-admission.js";
+ import type { FixedWindowRateLimiter } from "./webhook-memory-guards.js";
+ 
+ export { resolveAcceptedBrowserOrigin } from "../gateway/origin-check.js";
+@@ -309,8 +309,7 @@ export function beginWebhookRequestPipelineOrReject(params: {
+ }
+ 
+ /**
+- * Run post-ack webhook processing on its own admitted gateway work root with
+- * an independently owned async work scope.
++ * Run post-ack webhook processing on its own admitted gateway work root.
+  *
+  * Ack-first handlers respond before processing events, so the continued work
+  * outlives the HTTP request admission it inherited; once that admission is
+@@ -318,12 +317,9 @@ export function beginWebhookRequestPipelineOrReject(params: {
+  * gateway were draining. Call this synchronously from the request handler
+  * (while the request is still admitted): it reserves an independent root that
+  * keeps the detached processing accepted and lets a restart drain wait for it.
+- * The callback also runs inside a fresh detached async work scope, so work
+- * started here (for example deferred embedded-agent runs) keeps tracking even
+- * after the caller's own scope closes.
+  */
+ export function runDetachedWebhookWork<T>(run: () => Promise<T>): Promise<T> {
+-  return runWithGatewayDetachedWorkContinuation(async () => {
++  return runWithGatewayIndependentRootWorkContinuation(async () => {
+     // Reserve the root now, but let the request handler write its acknowledgement
+     // before any synchronous prefix in the detached callback can run.
+     await Promise.resolve();

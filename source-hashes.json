@@ -1,0 +1,47 @@
+{
+  "candidate": "50146b4ed8742ecc79140522410a3a7af26256e0",
+  "previous": "23bb5558713acc77686adeb37ab1d5fb8abf7e6d",
+  "base": "7bf4e2e088bc22daefa5696ab90228b4a5d8064a",
+  "files": [
+    {
+      "path": "src/agents/code-mode-headless.cancellation.test.ts",
+      "sha256": "0caf51f5363d498ecc01c84816d2df8ea46d45d406eac07ff5e04e1ec2ca9f57",
+      "containerMatches": true
+    },
+    {
+      "path": "src/agents/code-mode-worker.ts",
+      "sha256": "3462d9704e755413af045a63765f40cce4e542d1666a39c49bfc870495b952ed",
+      "containerMatches": true
+    },
+    {
+      "path": "src/hooks/autoreset-regression.test.ts",
+      "sha256": "d30479362c941e71f9822b8cae5ff0fbad833e9ba5b4612805acf11bff95477d",
+      "containerMatches": true
+    },
+    {
+      "path": "src/hooks/session-auto-reset.ts",
+      "sha256": "43e37b2c95795cb260f6751f8931bf084322ad4d68e22f71d792828e4fdac376",
+      "containerMatches": true
+    },
+    {
+      "path": "src/process/gateway-work-admission.test.ts",
+      "sha256": "b0a51261bbdcc902397d29c64333041ea5cba8c0d329aed097c953e8fa11b074",
+      "containerMatches": true
+    },
+    {
+      "path": "src/process/gateway-work-admission.ts",
+      "sha256": "f686b3f821037630f51e4c8377450fe85a330e202d89c939886df865ef920f24",
+      "containerMatches": true
+    },
+    {
+      "path": "src/plugin-sdk/webhook-request-guards.ts",
+      "sha256": "db956b0a1724fae2459c68af3824bf23854e52fdee4270c659ac0745d8810d9b",
+      "containerMatches": true
+    },
+    {
+      "path": "src/plugin-sdk/webhook-request-guards.test.ts",
+      "sha256": "88efa4866f5b52f74334a3714e85eb16f4feb494cad69725f7cf2c04f187c72f",
+      "containerMatches": true
+    }
+  ]
+}

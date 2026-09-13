@@ -1,0 +1,44 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.0 [39m[90m/work[39m
+
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mpublishes only committed suspension transitions and isolates broken observers[32m 37[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mclassifies draining errors only while an authoritative restart signal or drain is active[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mcounts one nested root chain once and excludes the preparing caller[32m 2[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mrolls back or releases a generation-bound suspension without resetting roots[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mdrains already-admitted work before promoting the same generation to prepared[32m 2[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mreleases draining admission without allowing stale generations to reopen it[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22madmits a targeted restart root only from prepared suspension[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22madmits a tracked restart-startup root only while restart fencing accepts recovery[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mlets an admitted root cross only the reversible suspension fence[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22msynchronously reserves a tracked continuation across a closed suspension fence[32m 6[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22muses the supplied origin when a continuation has no live parent[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mretains detached work through descendant cleanup after its requester closes[32m 23[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mkeeps a detached continuation's reservation while it owns its async lifetime[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mretains an admitted request root across its handler return[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mretains the original root through a started effect's resolve without adding admission[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mretains the original root through a started effect's reject without adding admission[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mdoes not park unrooted started effects behind suspension or restart admission[32m 2[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mdoes not extend the creating root's lifetime when a continuation only borrows ownership[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mkeeps borrowed-root completion alive when its owner and original request settle[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mdoes not retire process-lifetime work with the request that started it[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mruns an admitted continuation when restart drain wins the handoff race[32m 2[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mdoes not admit an unrelated continuation through restart drain[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mreal restart drain blocks a reserved continuation before provider execution and releases it[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mdoes not let a stale suspension release clear restart drain[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mblocks suspension while restart signal handling is pending[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mpromotes a pending restart signal to one-way drain[32m 0[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mforce-rolls back an orphan restart-signal fence without a live lease[32m 0[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mwakes beginGatewayRootWorkAdmissionWhenOpen waiters when the signal fence rolls back[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mdefers required internal root work until suspension reopens[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mretires independent work cancelled before admission without running it after resume[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mretires independent work cancelled while suspended without running it after resume[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mretires independent work cancelled during resume without running it after resume[32m 0[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mretains resumed independent work until its original completion after admission cancellation[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mretires surviving root records across an in-process reset[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[43m process [49m[39m src/process/gateway-work-admission.test.ts[2m > [22mdoes not wake deferred internal work into a restart drain[32m 1[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m35 passed[39m[22m[90m (35)[39m
+[2m   Start at [22m 15:35:02
+[2m   Duration [22m 3.89s[2m (worker 85%, transform 9%, tests 3%, setup 2%)[22m
+
