@@ -57,16 +57,30 @@ export function normalizeAuthEmailToken(value: string | undefined): string | und
   return normalizeAuthIdentityToken(value)?.toLowerCase();
 }
 
+export type OAuthIdentity = Pick<OAuthCredential, "accountId" | "email" | "issuer" | "clientId"> &
+  Partial<Pick<OAuthCredential, "provider" | "enterpriseUrl">>;
+
+export function hasOidcRegistration(credential: OAuthIdentity): boolean {
+  return credential.issuer !== undefined && credential.clientId !== undefined;
+}
+
+/** Identity evidence includes OIDC registration, even when its subject is unavailable. */
+export function hasOAuthIdentity(credential: OAuthIdentity): boolean {
+  return (
+    hasOidcRegistration(credential) ||
+    normalizeAuthIdentityToken(credential.accountId) !== undefined ||
+    normalizeAuthEmailToken(credential.email) !== undefined
+  );
+}
+
 /**
  * One-sided copy gate for both directions:
  * - mirror: sub-agent refresh -> main-agent store
  * - adopt: main-agent store -> sub-agent store
  */
 export function isSafeToCopyOAuthIdentity(
-  existing: Pick<OAuthCredential, "accountId" | "email"> &
-    Partial<Pick<OAuthCredential, "provider" | "enterpriseUrl">>,
-  incoming: Pick<OAuthCredential, "accountId" | "email"> &
-    Partial<Pick<OAuthCredential, "provider" | "enterpriseUrl">>,
+  existing: OAuthIdentity,
+  incoming: OAuthIdentity,
 ): boolean {
   if (
     existing.provider !== undefined &&
@@ -80,6 +94,16 @@ export function isSafeToCopyOAuthIdentity(
   }
   const aAcct = normalizeAuthIdentityToken(existing.accountId);
   const bAcct = normalizeAuthIdentityToken(incoming.accountId);
+  if (hasOidcRegistration(existing) || hasOidcRegistration(incoming)) {
+    // The provider binds accountId to its verified registration identity before
+    // persistence. Older unbound credentials must reconnect, never fall back to email.
+    return (
+      existing.issuer === incoming.issuer &&
+      existing.clientId === incoming.clientId &&
+      aAcct !== undefined &&
+      aAcct === bAcct
+    );
+  }
   const aEmail = normalizeAuthEmailToken(existing.email);
   const bEmail = normalizeAuthEmailToken(incoming.email);
 
