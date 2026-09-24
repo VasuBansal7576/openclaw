@@ -45,13 +45,13 @@ describe("shouldUseMainOwnerForLocalOAuthCredential", () => {
         local: createCredential({
           provider: "github-copilot",
           enterpriseUrl: "acme.ghe.com",
-          refresh: "child-tenant-refresh",
+          refresh: "shared-refresh-generation",
           expires: Date.now(),
         }),
         main: createCredential({
           provider: "github-copilot",
           enterpriseUrl: "other.ghe.com",
-          refresh: "main-tenant-refresh",
+          refresh: "shared-refresh-generation",
           expires: Date.now() + 60_000,
           accountId: "acct-main",
         }),
@@ -66,13 +66,13 @@ describe("shouldUseMainOwnerForLocalOAuthCredential", () => {
         local: createCredential({
           provider: "github-copilot",
           enterpriseUrl: "acme.ghe.com",
-          refresh: "child-generation-refresh",
+          refresh: "shared-refresh-generation",
           expires: Date.now(),
         }),
         main: createCredential({
           provider: "github-copilot",
           enterpriseUrl: "https://acme.ghe.com/",
-          refresh: "main-generation-refresh",
+          refresh: "shared-refresh-generation",
           expires: Date.now() + 60_000,
           accountId: "acct-main",
         }),
