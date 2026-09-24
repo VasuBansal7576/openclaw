@@ -10,13 +10,19 @@ import { createConnectionBootstrapCoordinator } from "../../app/connection-boots
 import type { ApplicationContext } from "../../app/context.ts";
 import { createAgentIdentityCapability } from "../../lib/agents/identity.ts";
 import { invalidateChatMetadataStore } from "../../lib/chat/chat-metadata-cache.ts";
+import { revalidateChatMetadata } from "../../lib/chat/chat-metadata-store.ts";
 import {
   buildFallbackSlashCommands,
   replaceSlashCommands,
   SLASH_COMMANDS,
 } from "../../lib/chat/commands.ts";
 import { extractText } from "../../lib/chat/message-extract.ts";
-import { clearModelCatalogCache } from "../../lib/model-catalog-cache.ts";
+import {
+  beginModelCatalogRead,
+  clearModelCatalogCache,
+  invalidateModelCatalogCache,
+  publishModelCatalogResult,
+} from "../../lib/model-catalog-cache.ts";
 import { createSessionCapability } from "../../lib/sessions/index.ts";
 import {
   createGatewayHarness,
@@ -34,12 +40,13 @@ import type { ChatPageHost } from "./chat-state-host.ts";
 import { createPageState } from "./chat-state-page.ts";
 import {
   applySelectedChatAgent,
+  applyChatModelCatalogSnapshot,
   refreshChatMetadata,
   refreshChatModelCatalogOnDemand,
   refreshChatModelAuthStatus,
   retireChatMetadataRequests,
 } from "./chat-state-refresh.ts";
-import { resolveChatAvatarUrl, selectedChatSessionRow } from "./chat-state-route.ts";
+import { selectedChatSessionRow } from "./chat-state-route.ts";
 import { buildChatItems } from "./chat-thread-build.ts";
 import { renderAssistantAttachments } from "./components/chat-message-attachments.ts";
 import { getChatSessionProjection, reduceChatSessionProjection } from "./history-merge.ts";
@@ -47,6 +54,7 @@ import { scheduleControlUiAfterPaint } from "./performance.ts";
 import { applySessionMessagePayload } from "./session-message-apply.ts";
 import { activatePanel, openSlot } from "./sidebar-layout.ts";
 import { buildToolStreamIdentity } from "./tool-stream-identity.ts";
+import { createHost as createToolStreamHost } from "./tool-stream.test-helpers.ts";
 
 beforeEach(() => {
   vi.spyOn(assistantIdentity, "loadLocalAssistantIdentity").mockReturnValue({
@@ -59,6 +67,29 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+
+function createPageContext() {
+  const { gateway, publish } = createGatewayHarness(createTestGatewayClient(vi.fn()));
+  publish(false, null);
+  return {
+    agents: {
+      state: { agentsList: null },
+      ensureList: vi.fn(async () => null),
+    },
+    agentSelection: { state: { selectedId: "main" } },
+    basePath: "",
+    config: {
+      current: {
+        allowExternalEmbedUrls: false,
+        assistantIdentity: { name: "Assistant" },
+        embedSandboxMode: "scripts",
+      },
+    },
+    gateway,
+    chatSubmissions: createChatSubmissions(),
+    sessions: {},
+  } as unknown as ApplicationContext;
+}
 
 describe("canonical session message recovery", () => {
   function createSessionEventState(overrides: Partial<ChatPageHost> = {}) {
@@ -75,10 +106,6 @@ describe("canonical session message recovery", () => {
       ...overrides,
     });
     if (!overrides.sessions) {
-      vi.spyOn(host.sessions, "reconcileChanged").mockImplementation(() => ({
-        applied: false,
-        result: host.sessions.state.result,
-      }));
       vi.spyOn(host.sessions, "refresh").mockResolvedValue(undefined);
       vi.spyOn(host.sessions, "listBranches").mockResolvedValue([]);
     }
@@ -2169,7 +2196,7 @@ describe("canonical session message recovery", () => {
   it.each([
     { name: "without a pending session-message reload", pendingReload: false },
     { name: "after a pending session-message reload", pendingReload: true },
-  ])("starts a fresh history request $name", async ({ pendingReload }) => {
+  ])("waits for the old read before fresh terminal history $name", async ({ pendingReload }) => {
     const runId = "run-with-pre-final-history";
     const prompt = {
       role: "user",
@@ -2220,9 +2247,10 @@ describe("canonical session message recovery", () => {
       },
     });
 
-    expect(request).toHaveBeenCalledTimes(2);
+    expect(request).toHaveBeenCalledTimes(1);
     staleHistory.resolve({ messages: [prompt], sessionId: "selected-session", sessionInfo });
     await preFinalLoad;
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
     expect(renderedTranscript(state)).toEqual([
       { role: "user", text: "Finish after the stale snapshot" },
     ]);
@@ -2844,18 +2872,19 @@ describe("canonical session message recovery", () => {
       ],
       chatBranchesConnectionEpoch: 1,
       chatBranchesSessionKey: "agent:main:main",
-      sessions: {
-        listBranches,
-        reconcileChanged: vi.fn().mockReturnValue({ applied: false }),
-        refresh: vi.fn().mockResolvedValue(undefined),
-      } as never,
     });
+    vi.spyOn(state.sessions, "listBranches").mockImplementation(listBranches);
 
-    handlePageGatewayEvent(state, {
-      type: "event",
-      event: "sessions.changed",
-      payload: { sessionKey: state.sessionKey, agentId: "main", reason: "branch-switch" },
-    });
+    handlePageGatewayEvent(
+      state,
+      {
+        type: "event",
+        event: "sessions.changed",
+        payload: { sessionKey: state.sessionKey, agentId: "main", reason: "branch-switch" },
+      },
+      undefined,
+      { applied: false },
+    );
 
     expect(state.chatBranches).toEqual([]);
     expect(state.chatBranchesSessionKey).toBeNull();
@@ -2885,16 +2914,11 @@ describe("canonical session message recovery", () => {
     expect(state.chatBranchesSessionKey).toBe("agent:main:main");
   });
 
-  it("keeps the routed row when a hidden pane observes its archive first", () => {
+  it("keeps the routed row when a hidden pane observes its archive first", async () => {
     const archivedKey = "agent:main:dashboard:archived";
-    const sharedHost = makeChatHost({
-      sessionKey: archivedKey,
-      sessionsResult: {
-        ts: 1,
-        path: "",
-        count: 1,
-        defaults: { modelProvider: null, model: null, contextTokens: null },
-        sessions: [
+    const client = createTestGatewayClient(async () =>
+      sessionsResult(
+        [
           {
             key: archivedKey,
             kind: "direct",
@@ -2903,24 +2927,42 @@ describe("canonical session message recovery", () => {
             updatedAt: 1,
           },
         ],
+        1,
+      ),
+    );
+    const { gateway, emitEvent } = createGatewayHarness(client);
+    gateway.snapshot.sessionKey = archivedKey;
+    const sessions = createTestSessionCapability(gateway);
+    const { state } = createSessionEventState({ sessions });
+    const delivered = vi.fn();
+    const hidden = sessions.observeRow({ key: state.sessionKey, agentId: "main" }, () => {}, {
+      onEvent: (event, result) => {
+        delivered(event, result);
+        handlePageGatewayEvent(state, event, () => false, result);
       },
     });
-    expect(sharedHost.sessions.state.result?.sessions).toHaveLength(1);
-    const { state } = createSessionEventState({ sessions: sharedHost.sessions });
+    try {
+      await sessions.refresh({ agentId: "main", force: true });
+      expect(sessions.state.result?.sessions).toHaveLength(1);
+      const event = {
+        type: "event" as const,
+        event: "sessions.changed",
+        payload: { key: archivedKey, sessionKey: archivedKey, archived: true, reason: "update" },
+      };
+      emitEvent(event);
 
-    handlePageGatewayEvent(state, {
-      type: "event",
-      event: "sessions.changed",
-      payload: { key: archivedKey, sessionKey: archivedKey, archived: true, reason: "update" },
-    });
-
-    expect(state.sessions.state.result?.sessions).toEqual([
-      expect.objectContaining({
-        key: archivedKey,
-        archived: true,
-        derivedTitle: "Archived title",
-      }),
-    ]);
+      expect(delivered).toHaveBeenCalledExactlyOnceWith(event, { applied: false });
+      expect(state.sessions.state.result?.sessions).toEqual([
+        expect.objectContaining({
+          key: archivedKey,
+          archived: true,
+          derivedTitle: "Archived title",
+        }),
+      ]);
+    } finally {
+      hidden.dispose();
+      sessions.dispose();
+    }
   });
 
   it("does not mistake identity-only message invalidation for a session reset", () => {
@@ -3028,7 +3070,6 @@ describe("canonical session message recovery", () => {
     state.sessions = {
       ...state.sessions,
       listBranches,
-      reconcileChanged: vi.fn().mockReturnValue({ applied: false }),
       refresh: vi.fn(async () => {
         await refreshFinished.promise;
         state.sessionsResult = {
@@ -3067,6 +3108,7 @@ describe("canonical session message recovery", () => {
         },
       },
       () => presented,
+      { applied: false },
     );
     presented = false;
     refreshFinished.resolve();
@@ -3158,26 +3200,6 @@ describe("ChatStateController render lifecycle", () => {
       sessionKey: "main",
       ...overrides,
     } as unknown as ChatPageHost;
-  }
-
-  function createPageContext() {
-    return {
-      agents: {
-        state: { agentsList: null },
-        ensureList: vi.fn(async () => null),
-      },
-      agentSelection: { state: { selectedId: "main" } },
-      basePath: "",
-      config: {
-        current: {
-          allowExternalEmbedUrls: false,
-          assistantIdentity: { name: "Assistant" },
-          embedSandboxMode: "scripts",
-        },
-      },
-      chatSubmissions: createChatSubmissions(),
-      sessions: {},
-    } as unknown as ApplicationContext;
   }
 
   it("owns attachment views in Files without replacing Detail content", () => {
@@ -3522,19 +3544,14 @@ describe("ChatStateController render lifecycle", () => {
   it("tracks waiting approval only for the selected session until resolution", () => {
     const requestUpdate = vi.fn();
     const state = {
-      sessionKey: "agent:main:current",
-      assistantAgentId: "main",
+      ...createToolStreamHost({
+        sessionKey: "agent:main:current",
+        assistantAgentId: "main",
+        chatRunId: "client-run-1",
+        chatStreamStartedAt: 1,
+      }),
       agentsList: { defaultId: "main" },
-      chatRunId: "client-run-1",
-      chatStream: null,
-      chatStreamStartedAt: 1,
-      chatStreamSegments: [],
-      chatToolMessages: [],
-      toolStreamById: new Map(),
-      toolStreamOrder: [],
-      toolStreamSyncTimer: null,
       waitingApprovalStatuses: new Map(),
-      sessions: { refreshReplacement: vi.fn(async () => undefined) },
       chatStreamRenderFrame: null,
       renderLifecycle: { invalidate: requestUpdate },
       requestUpdate,
@@ -3597,7 +3614,9 @@ describe("ChatStateController render lifecycle", () => {
       toolStreamById: new Map(),
       toolStreamOrder: [],
       toolStreamSyncTimer: null,
-      sessions: { refreshReplacement: vi.fn(async () => undefined) } as never,
+      sessions: {
+        reconcileMutation: vi.fn(async () => ({ status: "refreshed" as const })),
+      } as never,
     });
     const emitAgent = (seq: number, stream: string, data: Record<string, unknown>) =>
       handlePageGatewayEvent(state, {
@@ -3756,7 +3775,7 @@ describe("ChatStateController render lifecycle", () => {
 
     delta("opened https://github.com/openclaw/openclaw/pull/113840 for review ");
     expect(refreshSessionPullRequests).toHaveBeenCalledTimes(1);
-    expect(refreshSessionPullRequests).toHaveBeenCalledWith({ refresh: true });
+    expect(refreshSessionPullRequests).toHaveBeenCalledWith({ refresh: true, automatic: true });
 
     // One refresh reloads all of the branch's PRs; further links in the same
     // run must not spend more GitHub quota.
@@ -4091,7 +4110,7 @@ describe("session pull request refresh", () => {
     });
 
     if (refresh) {
-      expect(refreshSessionPullRequests).toHaveBeenCalledWith({ refresh: true });
+      expect(refreshSessionPullRequests).toHaveBeenCalledWith({ refresh: true, automatic: true });
     } else {
       expect(refreshSessionPullRequests).not.toHaveBeenCalled();
     }
@@ -4100,22 +4119,8 @@ describe("session pull request refresh", () => {
 
 describe("image lightbox lifecycle", () => {
   it("accepts only matching base64 video at the page boundary", () => {
-    const context = {
-      agents: { state: { agentsList: null }, ensureList: vi.fn(async () => null) },
-      agentSelection: { state: { selectedId: "main" } },
-      basePath: "",
-      config: {
-        current: {
-          allowExternalEmbedUrls: false,
-          assistantIdentity: { name: "Assistant" },
-          embedSandboxMode: "scripts",
-        },
-      },
-      chatSubmissions: createChatSubmissions(),
-      sessions: {},
-    } as unknown as ApplicationContext;
     const state = createPageState(
-      context,
+      createPageContext(),
       { invalidate: vi.fn(), afterCommit: () => () => {} },
       { dispatchEvent: () => true, querySelector: () => null },
     );
@@ -4147,25 +4152,8 @@ describe("image lightbox lifecycle", () => {
 
   it("invalidates immediately when beginning a deferred image open", () => {
     const invalidate = vi.fn();
-    const context = {
-      agents: {
-        state: { agentsList: null },
-        ensureList: vi.fn(async () => null),
-      },
-      agentSelection: { state: { selectedId: "main" } },
-      basePath: "",
-      config: {
-        current: {
-          allowExternalEmbedUrls: false,
-          assistantIdentity: { name: "Assistant" },
-          embedSandboxMode: "scripts",
-        },
-      },
-      chatSubmissions: createChatSubmissions(),
-      sessions: {},
-    } as unknown as ApplicationContext;
     const state = createPageState(
-      context,
+      createPageContext(),
       {
         invalidate,
         afterCommit: () => () => {},
@@ -4185,19 +4173,6 @@ describe("image lightbox lifecycle", () => {
     expect(state.imageLightbox).toBeNull();
     expect(release).toHaveBeenCalledOnce();
     expect(invalidate).toHaveBeenCalledOnce();
-  });
-});
-
-describe("resolveChatAvatarUrl", () => {
-  it("prefers the authenticated avatar blob over persisted and protected URLs", () => {
-    const state = {
-      sessionKey: "agent:main:main",
-      chatAvatarUrl: "blob:authenticated-avatar",
-      assistantAvatar: "/avatar/main",
-      assistantAgentId: "main",
-    } as unknown as ChatPageHost;
-
-    expect(resolveChatAvatarUrl(state)).toBe("blob:authenticated-avatar");
   });
 });
 
@@ -4318,6 +4293,310 @@ describe("refreshChatMetadata", () => {
       ...overrides,
     } as unknown as ChatPageHost;
   }
+
+  it("keeps a pending explicit picker catalog through command-only revalidation", async () => {
+    const models = [{ id: "fresh", name: "Fresh", provider: "test" }];
+    const catalog = createDeferred<{ models: typeof models }>();
+    const request = vi.fn((method: string) =>
+      method === "models.list" ? catalog.promise : Promise.resolve({ commands: [] }),
+    );
+    const state = createMetadataState(request);
+    const picker = refreshChatModelCatalogOnDemand(state);
+    try {
+      expect(state.chatModelsLoading).toBe(true);
+      await revalidateChatMetadata(state.client!, {
+        agentId: "work",
+        sessionKey: state.sessionKey,
+      });
+      catalog.resolve({ models });
+      await picker;
+      expect(state.chatModelCatalog).toEqual(models);
+      expect(state.chatModelsLoading).toBe(false);
+      expect(request.mock.calls.map(([method]) => method)).toEqual([
+        "models.list",
+        "chat.metadata",
+        "sessions.describe",
+      ]);
+    } finally {
+      catalog.resolve({ models });
+      await picker;
+      retireChatMetadataRequests(state);
+      state.sessions.dispose();
+    }
+  });
+
+  it("ends a retired automatic catalog's loading before unrelated commands settle", async () => {
+    const catalog = createDeferred<{ models: [] }>();
+    const commands = createDeferred<{ commands: [] }>();
+    const request = vi.fn((method: string) =>
+      method === "models.list" ? catalog.promise : commands.promise,
+    );
+    const state = createMetadataState(request);
+    const automatic = refreshChatMetadata(state, { automatic: true });
+    try {
+      expect(state.chatModelsLoading).toBe(true);
+      invalidateModelCatalogCache(state.client!, {
+        agentId: "work",
+        sessionKey: state.sessionKey,
+      });
+      catalog.resolve({ models: [] });
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+      expect(state.chatModelsLoading).toBe(false);
+      expect(request.mock.calls.filter(([method]) => method === "models.list")).toHaveLength(1);
+    } finally {
+      catalog.resolve({ models: [] });
+      commands.resolve({ commands: [] });
+      await automatic;
+      retireChatMetadataRequests(state);
+      state.sessions.dispose();
+    }
+  });
+
+  it.each(
+    (["automatic", "picker"] as const).flatMap((first) => [
+      { first, failure: false },
+      { first, failure: true },
+    ]),
+  )(
+    "keeps the replacement loading when the retired $first catalog settles (failure=$failure)",
+    async ({ first, failure }) => {
+      const retiredModels = [{ id: "retired", name: "Retired", provider: "test" }];
+      const oldCatalog = createDeferred<{ models: typeof retiredModels }>();
+      const freshModels = [{ id: "fresh", name: "Fresh", provider: "test" }];
+      const freshCatalog = createDeferred<{ models: typeof freshModels }>();
+      let catalogReads = 0;
+      const request = vi.fn((method: string) =>
+        method === "models.list"
+          ? ++catalogReads === 1
+            ? oldCatalog.promise
+            : freshCatalog.promise
+          : Promise.resolve({ commands: [] }),
+      );
+      const state = createMetadataState(request);
+      const original =
+        first === "automatic"
+          ? refreshChatMetadata(state, { automatic: true })
+          : refreshChatModelCatalogOnDemand(state);
+      invalidateModelCatalogCache(state.client!, { agentId: "work", sessionKey: state.sessionKey });
+      const replacement =
+        first === "automatic"
+          ? refreshChatModelCatalogOnDemand(state)
+          : refreshChatMetadata(state, { automatic: true });
+      try {
+        expect(catalogReads).toBe(1);
+        expect(state.chatModelsLoading).toBe(true);
+        if (failure) {
+          oldCatalog.reject(new Error("Retired catalog failure"));
+        } else {
+          oldCatalog.resolve({ models: retiredModels });
+        }
+        await original;
+        expect(catalogReads).toBe(2);
+        expect(state.chatModelCatalog).toEqual([]);
+        expect(state.chatModelCatalogError).toBeNull();
+        expect(state.chatModelsLoading).toBe(true);
+        freshCatalog.resolve({ models: freshModels });
+        await replacement;
+        expect(state.chatModelCatalog).toEqual(freshModels);
+        expect(state.chatModelsLoading).toBe(false);
+      } finally {
+        oldCatalog.resolve({ models: retiredModels });
+        freshCatalog.resolve({ models: freshModels });
+        await Promise.all([original, replacement]);
+        retireChatMetadataRequests(state);
+        state.sessions.dispose();
+      }
+    },
+  );
+
+  it("shares a failed automatic attempt until explicit refresh recovers it", async () => {
+    const models = [{ id: "fresh", name: "Fresh", provider: "test" }];
+    let failing = true;
+    const request = vi.fn(async (method: string) => {
+      if (failing) {
+        throw new Error("Shared automatic failure");
+      }
+      return method === "models.list" ? { models } : { commands: [] };
+    });
+    const first = createMetadataState(request);
+    const follower = createMetadataState(request, { client: first.client });
+    const counts = () =>
+      ["chat.metadata", "models.list"].map(
+        (method) => request.mock.calls.filter(([called]) => called === method).length,
+      );
+    try {
+      await Promise.all([
+        refreshChatMetadata(first, { automatic: true }),
+        refreshChatMetadata(follower, { automatic: true }),
+      ]);
+      await refreshChatMetadata(follower, { automatic: true });
+      expect(counts()).toEqual([1, 1]);
+      expect(follower.chatModelCatalogError).toContain("Shared automatic failure");
+      failing = false;
+      await refreshChatMetadata(first);
+      await refreshChatMetadata(follower, { automatic: true });
+      expect(counts()).toEqual([2, 2]);
+      expect(follower.chatModelCatalog).toEqual(models);
+      expect(follower.chatModelCatalogError).toBeNull();
+    } finally {
+      for (const state of [first, follower]) {
+        retireChatMetadataRequests(state);
+        state.sessions.dispose();
+      }
+    }
+  });
+
+  it.each([
+    "snapshot",
+    "snapshot-after-failure",
+    "invalidation",
+    "expiry",
+    "refresh",
+    "eviction",
+  ] as const)(
+    "reobserves canonical catalog %s after an automatic attempt settled",
+    async (change) => {
+      const clock = change === "expiry" ? vi.spyOn(Date, "now").mockReturnValue(1000) : undefined;
+      const before = [
+        {
+          id: "before",
+          name: "Before",
+          provider: "test",
+          ...(change === "expiry" ? { unavailableUntil: 2000 } : {}),
+        },
+      ];
+      const after = [{ id: "after", name: "After", provider: "test" }];
+      const request = vi.fn(async (method: string) => {
+        if (method === "models.list" && change === "snapshot-after-failure") {
+          throw new Error("Old catalog failure");
+        }
+        return method === "models.list" ? { models: before } : { commands: [] };
+      });
+      const first = createMetadataState(request);
+      const states = [first];
+      const scope = { agentId: "work", sessionKey: first.sessionKey };
+      const refresh =
+        change === "refresh"
+          ? beginModelCatalogRead(first.client!, { agentId: "other", refresh: true })
+          : undefined;
+      try {
+        await refreshChatMetadata(first, { automatic: true });
+        expect(first.chatModelCatalog).toEqual(change === "snapshot-after-failure" ? [] : before);
+        if (change.startsWith("snapshot")) {
+          publishModelCatalogResult(beginModelCatalogRead(first.client!, scope), scope, {
+            models: after,
+          });
+          const follower = createMetadataState(request, { client: first.client });
+          states.push(follower);
+          await refreshChatMetadata(follower, { automatic: true });
+          expect(follower.chatModelCatalog).toEqual(after);
+          expect(follower.chatModelCatalogError).toBeNull();
+        } else {
+          first.chatMetadataIsPresented = () => false;
+          if (refresh) {
+            publishModelCatalogResult(
+              refresh,
+              { agentId: "other", refresh: true },
+              { models: after },
+            );
+          } else if (change === "eviction") {
+            for (let index = 0; index < 65; index++) {
+              const otherScope = { agentId: `other-${index}` };
+              publishModelCatalogResult(
+                beginModelCatalogRead(first.client!, otherScope),
+                otherScope,
+                {
+                  models: after,
+                },
+              );
+            }
+          } else if (clock) {
+            clock.mockReturnValue(2000);
+          } else {
+            invalidateModelCatalogCache(first.client!, scope);
+          }
+          request.mockImplementation(async (method) =>
+            method === "models.list" ? { models: after } : { commands: [] },
+          );
+          first.chatMetadataIsPresented = () => true;
+          await refreshChatMetadata(first, { automatic: true });
+          expect(first.chatModelCatalog).toEqual(after);
+        }
+        expect(request.mock.calls.filter(([method]) => method === "models.list")).toHaveLength(
+          change.startsWith("snapshot") ? 1 : 2,
+        );
+      } finally {
+        clock?.mockRestore();
+        for (const state of states) {
+          retireChatMetadataRequests(state);
+          state.sessions.dispose();
+        }
+      }
+    },
+  );
+
+  it.each([1, 2])(
+    "ends automatic catalog loading for an expired response without retrying (%s panes)",
+    async (panes) => {
+      const models = [{ id: "expired", name: "Expired", provider: "test", unavailableUntil: 1 }];
+      const request = vi.fn(async (method: string) =>
+        method === "models.list" ? { models } : { commands: [] },
+      );
+      const state = createMetadataState(request);
+      const states = [state];
+      if (panes === 2) {
+        states.push(createMetadataState(request, { client: state.client }));
+      }
+      try {
+        await Promise.all(states.map((pane) => refreshChatMetadata(pane, { automatic: true })));
+        for (const pane of states) {
+          expect(pane.chatModelsLoading).toBe(false);
+          expect(pane.chatModelCatalog).toEqual(models);
+        }
+        expect(request.mock.calls.filter(([method]) => method === "models.list")).toHaveLength(1);
+      } finally {
+        for (const pane of states) {
+          retireChatMetadataRequests(pane);
+          pane.sessions.dispose();
+        }
+      }
+    },
+  );
+
+  it("keeps a fresh picker snapshot usable while automatic admission waits for commands", async () => {
+    const models = [{ id: "fresh", name: "Fresh", provider: "test" }];
+    const catalog = createDeferred<{ models: typeof models }>();
+    const pendingCommands = createDeferred<{ commands: [] }>();
+    const request = vi.fn((method: string) =>
+      method === "models.list"
+        ? catalog.promise
+        : method === "chat.metadata"
+          ? pendingCommands.promise
+          : Promise.resolve({}),
+    );
+    const state = createMetadataState(request);
+    const picker = refreshChatModelCatalogOnDemand(state);
+    const commands = revalidateChatMetadata(state.client!, {
+      agentId: "work",
+      sessionKey: state.sessionKey,
+    });
+    const automatic = refreshChatMetadata(state, { automatic: true });
+    try {
+      catalog.resolve({ models });
+      await picker;
+      expect(state.chatModelCatalog).toEqual(models);
+      expect(state.chatModelsLoading).toBe(false);
+      expect(request.mock.calls.filter(([method]) => method === "models.list")).toHaveLength(1);
+    } finally {
+      catalog.resolve({ models });
+      pendingCommands.resolve({ commands: [] });
+      await Promise.all([commands, automatic, picker]);
+      retireChatMetadataRequests(state);
+      state.sessions.dispose();
+    }
+  });
 
   it.each(
     ["settled", "catalog-first", "selection-first"].flatMap((order) => [
@@ -4463,18 +4742,59 @@ describe("refreshChatMetadata", () => {
   });
 
   it.each([
-    { pickerPending: false, scopedAfterGlobal: false, metadataPending: false },
-    { pickerPending: true, scopedAfterGlobal: false, metadataPending: false },
-    { pickerPending: false, scopedAfterGlobal: true, metadataPending: false },
-    { pickerPending: false, scopedAfterGlobal: true, metadataPending: true },
+    {
+      pickerPending: false,
+      scopedAfterGlobal: false,
+      metadataPending: false,
+      hidden: false,
+      empty: false,
+    },
+    {
+      pickerPending: true,
+      scopedAfterGlobal: false,
+      metadataPending: false,
+      hidden: false,
+      empty: false,
+    },
+    {
+      pickerPending: false,
+      scopedAfterGlobal: true,
+      metadataPending: false,
+      hidden: false,
+      empty: false,
+    },
+    {
+      pickerPending: false,
+      scopedAfterGlobal: true,
+      metadataPending: true,
+      hidden: false,
+      empty: false,
+    },
+    {
+      pickerPending: false,
+      scopedAfterGlobal: true,
+      metadataPending: true,
+      hidden: true,
+      empty: false,
+    },
+    {
+      pickerPending: false,
+      scopedAfterGlobal: true,
+      metadataPending: true,
+      hidden: false,
+      empty: true,
+    },
   ])(
-    "converges catalog invalidation with pending picker=$pickerPending, metadata=$metadataPending and scoped follow-up=$scopedAfterGlobal",
-    async ({ pickerPending, scopedAfterGlobal, metadataPending }) => {
+    "converges catalog invalidation with pending picker=$pickerPending, metadata=$metadataPending, scoped follow-up=$scopedAfterGlobal, hidden=$hidden and empty=$empty",
+    async ({ pickerPending, scopedAfterGlobal, metadataPending, hidden, empty }) => {
       const prepared = { id: "model", name: "Model", provider: "test", contextWindow: 8_192 };
       const discovered = { ...prepared, contextWindow: 262_144 };
-      const catalog = createDeferred<{ models: (typeof prepared)[] }>();
+      const acceptedModels = empty ? [] : [discovered];
+      const retiredCatalog = createDeferred<{ models: (typeof prepared)[] }>();
+      const currentCatalog = createDeferred<{ models: (typeof prepared)[] }>();
       const metadata = createDeferred<{ commands: [] }>();
       let invalidated = false;
+      let catalogReads = 0;
       const request = vi.fn((method: string) =>
         method === "chat.metadata"
           ? metadataPending && invalidated
@@ -4483,10 +4803,13 @@ describe("refreshChatMetadata", () => {
           : method === "sessions.describe"
             ? Promise.resolve({})
             : invalidated
-              ? catalog.promise
+              ? ++catalogReads === 1
+                ? retiredCatalog.promise
+                : currentCatalog.promise
               : Promise.resolve({ models: [prepared] }),
       );
       const state = createMetadataState(request);
+      let follower: ChatPageHost | undefined;
       const invalidateSessions = vi
         .spyOn(state.sessions, "invalidate")
         .mockImplementation(() => {});
@@ -4503,7 +4826,39 @@ describe("refreshChatMetadata", () => {
           });
         }
         expect(invalidateSessions).not.toHaveBeenCalled();
-        catalog.resolve({ models: [discovered] });
+        state.chatMetadataIsPresented = () => !hidden;
+        retiredCatalog.resolve({ models: [discovered] });
+        if (scopedAfterGlobal) {
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, 0);
+          });
+          expect(request.mock.calls.filter(([method]) => method === "sessions.describe")).toEqual(
+            [],
+          );
+        }
+        if (metadataPending) {
+          const scope = { agentId: "work", sessionKey: state.sessionKey };
+          publishModelCatalogResult(beginModelCatalogRead(state.client!, scope), scope, {
+            models: acceptedModels,
+          });
+          applyChatModelCatalogSnapshot(state);
+          expect(state.chatModelCatalog).toEqual(acceptedModels);
+          if (empty) {
+            follower = createMetadataState(request, { client: state.client });
+            void refreshChatMetadata(follower, { automatic: true });
+            expect(follower.chatModelsLoading).toBe(false);
+            expect(follower.chatModelCatalog).toEqual([]);
+          }
+          if (hidden) {
+            expect(request.mock.calls.filter(([method]) => method === "sessions.describe")).toEqual(
+              [],
+            );
+            state.chatMetadataIsPresented = () => true;
+            void refreshChatMetadata(state, { automatic: true });
+          }
+        } else {
+          currentCatalog.resolve({ models: [discovered] });
+        }
         await vi.waitFor(() =>
           expect(
             request.mock.calls.filter(([method]) => method === "sessions.describe"),
@@ -4512,12 +4867,18 @@ describe("refreshChatMetadata", () => {
         expect(invalidateSessions).not.toHaveBeenCalled();
         await picker;
 
-        expect(state.chatModelCatalog).toEqual([discovered]);
+        expect(state.chatModelCatalog).toEqual(acceptedModels);
         metadata.resolve({ commands: [] });
         await refreshChatMetadata(state);
       } finally {
+        retiredCatalog.resolve({ models: [discovered] });
+        currentCatalog.resolve({ models: [discovered] });
         metadata.resolve({ commands: [] });
         retireChatMetadataRequests(state);
+        if (follower) {
+          retireChatMetadataRequests(follower);
+          follower.sessions.dispose();
+        }
       }
     },
   );
@@ -4616,40 +4977,6 @@ describe("refreshChatMetadata", () => {
       expect(state.chatModelCatalog).toEqual([ready]);
       expect(state.chatAccountSelection).toEqual(accountSelection);
       expect(state.chatModelCatalogError).toBeNull();
-      retireChatMetadataRequests(state);
-    },
-  );
-
-  it.each(["command-metadata", "patch"])(
-    "refreshes only the matching session for %s, not streaming updates",
-    async (reason) => {
-      const request = vi.fn().mockResolvedValue({ commands: [], models: [] });
-      const state = createMetadataState(request);
-      const invalidateSessions = vi
-        .spyOn(state.sessions, "invalidate")
-        .mockImplementation(() => {});
-      await refreshChatMetadata(state);
-      for (const [key, eventReason] of [
-        ["agent:work:other", reason],
-        [state.sessionKey, "message"],
-      ]) {
-        handlePageGatewayEvent(state, {
-          type: "event",
-          event: "sessions.changed",
-          payload: { key, agentId: "work", reason: eventReason },
-        });
-      }
-      expect(request.mock.calls.filter(([method]) => method === "chat.metadata")).toHaveLength(1);
-      handlePageGatewayEvent(state, {
-        type: "event",
-        event: "sessions.changed",
-        payload: { key: state.sessionKey, agentId: "work", reason },
-      });
-      await vi.waitFor(() =>
-        expect(request.mock.calls.filter(([method]) => method === "chat.metadata")).toHaveLength(2),
-      );
-      await refreshChatMetadata(state);
-      expect(invalidateSessions).not.toHaveBeenCalled();
       retireChatMetadataRequests(state);
     },
   );

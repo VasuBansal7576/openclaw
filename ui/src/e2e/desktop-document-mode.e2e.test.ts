@@ -55,6 +55,9 @@ async function installDesktopClientFake(panel: import("playwright").Locator) {
         options.target.replaceChildren(remote);
         options.onConnect?.();
         return {
+          setPresented() {
+            return true;
+          },
           disableInput() {
             element.dataset.viewOnly = "true";
           },
@@ -265,6 +268,7 @@ suite.define(() => {
         const sessionKey = "agent:main:cloud-desktop";
         const session = {
           key: sessionKey,
+          sessionId: "cloud-desktop-session",
           kind: "direct",
           label: "Cloud desktop session",
           updatedAt: 1,
