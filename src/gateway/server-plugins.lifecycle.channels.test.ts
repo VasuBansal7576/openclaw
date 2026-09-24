@@ -5,6 +5,10 @@ import path from "node:path";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import type { ChannelPlugin } from "../channels/plugins/types.public.js";
+import {
+  attachRuntimeConfigWriteApplication,
+  createRuntimeConfigWriteApplication,
+} from "../config/runtime-write-application.js";
 import { registerPluginHttpRoute } from "../plugins/http-registry.js";
 import { commitConfigWithPendingPluginInstalls } from "../plugins/install-record-commit.js";
 import { getActivePluginRegistry } from "../plugins/runtime.js";
@@ -210,7 +214,9 @@ module.exports = { id: ${JSON.stringify(id)}, register(api) {
         expect(await probe("sibling-chat")).toEqual(sibling);
       }
       const persisted = JSON.parse(await fs.readFile(configPath, "utf8"));
+      const application = createRuntimeConfigWriteApplication();
       const committed = await commitConfigWithPendingPluginInstalls({
+        writeOptions: attachRuntimeConfigWriteApplication({}, application),
         nextConfig: {
           ...persisted,
           channels: {
@@ -230,9 +236,10 @@ module.exports = { id: ${JSON.stringify(id)}, register(api) {
         },
       });
       expect(committed.afterWrite.mode).toBe("auto");
-      await expect
-        .poll(async () => (await probe("cold-chat")).captured?.label)
-        .toBe("installed setup");
+      expect(application.claimed).toBe(true);
+      // Persistence schedules application; await its owner before probing the replacement.
+      await expect(application.result).resolves.toBe("applied");
+      expect((await probe("cold-chat")).captured?.label).toBe("installed setup");
       expect(await probe("cold-chat")).toMatchObject({ starts: 1, stops: 0, pid: cold.pid });
       expect(await probe("sibling-chat")).toEqual(sibling);
       expect(connected.readyState).toBe(connected.OPEN);
